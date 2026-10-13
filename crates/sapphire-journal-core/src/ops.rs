@@ -37,6 +37,10 @@ use crate::{
 /// - field `null`  → `Clear`
 /// - field `<value>` → `Set(value)`
 ///
+/// Serializing mirrors that: `Set` is the value and `Clear` is `null`.
+/// `Unchanged` must be left out of the output by the containing struct
+/// (`#[serde(skip_serializing_if = "UpdateOption::is_unchanged")]`).
+///
 /// The JSON schema is identical to `Option<T>` (nullable value).
 #[derive(Debug, Default)]
 pub enum UpdateOption<T> {
@@ -44,6 +48,21 @@ pub enum UpdateOption<T> {
     Clear,
     #[default]
     Unchanged,
+}
+
+impl<T> UpdateOption<T> {
+    pub fn is_unchanged(&self) -> bool {
+        matches!(self, UpdateOption::Unchanged)
+    }
+}
+
+impl<T: serde::Serialize> serde::Serialize for UpdateOption<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            UpdateOption::Set(v) => serializer.serialize_some(v),
+            UpdateOption::Clear | UpdateOption::Unchanged => serializer.serialize_none(),
+        }
+    }
 }
 
 impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for UpdateOption<T> {
@@ -584,7 +603,7 @@ pub fn list_entries(
     }
     let filter = &filter;
     if let Ok(conn) = state.open_conn() {
-        let _ = cache::sync_cache(&state.journal, &conn, state.retrieve_db(), state.track());
+        let _ = cache::sync_cache(&state.journal, &conn);
         if let Ok(entries) = cache::list_entries_from_cache(&conn) {
             return apply_filter_and_sort(entries, filter);
         }

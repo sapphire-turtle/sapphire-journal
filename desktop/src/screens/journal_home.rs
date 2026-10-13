@@ -1370,7 +1370,7 @@ fn save_current_entry(app: &mut App) {
 
 // ── Journal-state lifecycle ────────────────────────────────────────────────
 
-/// Open the journal's [`JournalState`] (cache DB + retrieve DB) and stash it
+/// Open the journal's [`JournalState`] (entry cache) and stash it
 /// in `app.journal_state` so the periodic re-index task can use it.
 /// Idempotent: re-opening for the same `journal_root` is a no-op.
 ///

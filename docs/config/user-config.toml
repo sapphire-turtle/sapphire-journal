@@ -3,31 +3,16 @@
 # Location: $XDG_CONFIG_HOME/sapphire-journal/config.toml
 #          (typically ~/.config/sapphire-journal/config.toml)
 #
-# This file holds host/machine-specific settings (cache backend, embedding
-# provider, sync cadence). It is intentionally separate from the per-journal
-# `.sapphire-journal/config.toml` so that the same journal can be shared
-# across machines with different hardware capabilities.
+# This file holds host/machine-specific settings. It is intentionally separate
+# from the per-journal `.sapphire-journal/config.toml` so that the same journal
+# can be shared across machines.
+#
+# Embedding (semantic search) is not configured here: the host's
+# `sapphire-bridge` runs one model for every app. See
+# `sapphire-journal embedding show`. A `[cache.retrieve]` section left over
+# from an older version is ignored.
 
-# ── Retrieve cache ───────────────────────────────────────────────────────────
-[cache.retrieve]
-# "none" | "redb"
-db = "redb"
-
-[cache.retrieve.embedding]
-enabled     = true
-provider    = "openai"
-model       = "text-embedding-3-small"
-dimension   = 1536
-api_key_env = "OPENAI_API_KEY"
-
-# For local providers (Ollama, fastembed, etc.):
-# provider  = "ollama"
-# model     = "nomic-embed-text"
-# dimension = 768
-# base_url  = "http://localhost:11434"
-
-# ── Periodic re-index ────────────────────────────────────────────────────────
-# How often to refresh the cache + retrieve index (full-text + vector), in
-# minutes. Picked up by the MCP server's and desktop app's periodic re-index
-# task. Omit or set to 0 to disable periodic re-index.
+# ── Periodic re-scan ─────────────────────────────────────────────────────────
+# How often the server and the desktop app re-scan the entry cache, in minutes.
+# Omit to use the default (10); set to 0 to disable.
 sync_interval_minutes = 30

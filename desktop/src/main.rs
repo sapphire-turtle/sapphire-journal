@@ -18,7 +18,7 @@ use app::App;
 fn main() -> eframe::Result<()> {
     gpu::init_logging();
     gpu::install_panic_hook();
-    sapphire_journal_core::init_app_context();
+    sapphire_journal_core::init_app_context(sapphire_journal_core::AppKind::Desktop);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

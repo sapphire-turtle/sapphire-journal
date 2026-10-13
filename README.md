@@ -103,19 +103,36 @@ cargo install sapphire-journal-cli
 See [cli/README.md](cli/README.md) for the full command reference.
 
 A **journal** is any directory tree that contains a `.sapphire-journal/` directory.
-`sapphire-journal` locates it by walking up from the current directory, the same way `git` finds `.git/`.
 Use `sapphire-journal init` to create one.
+
+`sapphire-journal` is one binary: the journal's own commands (`entry`, `cache`, …)
+sit beside [sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework)'s
+(`serve`, `status`, `service`, `workspace`, `mcp`, …). Run bare (or as `serve`), it is the
+app server: it serves one journal, indexes it for search, syncs it through the host's
+`sapphire-bridge`, and answers MCP. The journal it serves is chosen with
+`sapphire-journal workspace select <dir>`; the journal commands work on that one unless
+`--journal-dir` names another.
+
+```sh
+sapphire-journal init ~/journal
+sapphire-journal workspace select ~/journal
+sapphire-journal service install        # or run `sapphire-journal serve` in a terminal
+```
+
+AI agents connect with `sapphire-journal mcp` (stdio), or over HTTP at
+`http://127.0.0.1:3172/mcp` once `[mcp] http = true` is set in the server's `server.toml`.
+Semantic search uses the embedding model the host's `sapphire-bridge` runs
+(`sapphire-journal embedding show`); without one, search is full-text.
 
 ## Project structure
 
 ```
 sapphire-journal/
-├── cli/                     # CLI binary (sapphire-journal)
+├── cli/                     # The sapphire-journal binary: CLI and app server
 ├── desktop/                 # Desktop GUI (egui)
-├── server/                  # self-hosted remote workspace + MCP server
 └── crates/
-│   ├── sapphire-journal-core/   # Data model, Markdown parser/serializer, SQLite cache
-│   └── sapphire-journal-mcp/    # MCP server library (embedded by cli and server)
+    ├── sapphire-journal-core/   # Data model, Markdown parser/serializer, SQLite entry cache
+    └── sapphire-journal-mcp/    # The journal's server methods and the MCP tools that call them
 ```
 
 ## Status

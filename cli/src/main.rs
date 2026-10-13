@@ -1,65 +1,54 @@
-mod commands;
-
 use anyhow::Result;
-use clap::{Parser, Subcommand};
-use std::path::PathBuf;
-
-#[derive(Parser)]
-#[command(name = "sapphire-journal", about = "Markdown-based task and note manager", version)]
-struct Cli {
-    /// Path to the journal root (the directory containing `.sapphire-journal/`).
-    /// Overrides the automatic upward search from the current directory.
-    /// Can also be set via the SAPPHIRE_JOURNAL_DIR environment variable.
-    #[arg(long, env = "SAPPHIRE_JOURNAL_DIR", global = true, value_name = "DIR")]
-    journal_dir: Option<PathBuf>,
-
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Initialize a new journal in the given directory (defaults to current directory)
-    Init {
-        /// Directory to initialize (created if it does not exist)
-        path: Option<PathBuf>,
-    },
-    /// Manage entries
-    Entry {
-        #[command(subcommand)]
-        action: commands::entry::EntryCommand,
-    },
-    /// Manage the local SQLite cache
-    Cache {
-        #[command(subcommand)]
-        action: commands::cache::CacheCommand,
-    },
-    /// Show current configuration (user-level and journal-level)
-    Config {
-        #[command(subcommand)]
-        action: commands::config::ConfigCommand,
-    },
-    /// Run as an MCP server over stdio (for AI agent integrations such as Claude Desktop / Claude Code)
-    Mcp {
-        /// Initialize the target directory as a sapphire-journal if it isn't one already.
-        /// Creates the directory itself if missing. No-op when a journal already exists there.
-        #[arg(long)]
-        init: bool,
-    },
-}
+use clap::Parser as _;
+use sapphire_journal::cli::{Cli, Command, FrameworkCommand};
+use sapphire_journal::{commands, root, serve};
+use sapphire_journal_core::AppKind;
 
 fn main() -> Result<()> {
-    sapphire_journal_core::init_app_context();
-
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Init { path } => commands::init::run(path)?,
-        Command::Entry { action } => commands::entry::run(cli.journal_dir.as_deref(), action)?,
-        Command::Cache { action } => commands::cache::run(cli.journal_dir.as_deref(), action)?,
-        Command::Config { action } => commands::config::run(cli.journal_dir.as_deref(), action)?,
-        Command::Mcp { init } => sapphire_journal_mcp::run(cli.journal_dir.as_deref(), init)?,
+        // A bare invocation *is* `serve`: what the service manager starts.
+        None | Some(Command::Framework(FrameworkCommand::Serve)) => {
+            sapphire_journal_core::init_app_context(AppKind::Server);
+            runtime()?.block_on(serve::run())
+        }
+        // `mcp` among them: its stdout is the MCP stream, and the
+        // framework's console log goes to stderr.
+        Some(Command::Framework(command)) => {
+            sapphire_journal_core::init_app_context(AppKind::Cli);
+            let code =
+                runtime()?.block_on(command.dispatch(serve::build_oneshot(), serve::VERSION))?;
+            if code != 0 {
+                std::process::exit(code);
+            }
+            Ok(())
+        }
+        Some(Command::Init { path }) => {
+            sapphire_journal_core::init_app_context(AppKind::Cli);
+            commands::init::run(path)
+        }
+        Some(Command::Entry { action }) => {
+            sapphire_journal_core::init_app_context(AppKind::Cli);
+            commands::entry::run(&root::resolve(cli.journal_dir.as_deref())?, action)
+        }
+        Some(Command::Cache { action }) => {
+            sapphire_journal_core::init_app_context(AppKind::Cli);
+            commands::cache::run(&root::resolve(cli.journal_dir.as_deref())?, action)
+        }
+        Some(Command::Config { action }) => {
+            sapphire_journal_core::init_app_context(AppKind::Cli);
+            let journal = match cli.journal_dir {
+                Some(dir) => Some(dir),
+                None => root::selected().ok().flatten(),
+            };
+            commands::config::run(journal.as_deref(), action)
+        }
     }
+}
 
-    Ok(())
+fn runtime() -> Result<tokio::runtime::Runtime> {
+    Ok(tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?)
 }
