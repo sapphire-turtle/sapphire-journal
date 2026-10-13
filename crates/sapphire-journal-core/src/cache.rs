@@ -139,6 +139,49 @@ pub fn cache_info(journal: &Journal, conn: &Connection) -> Result<CacheInfo> {
     Ok(CacheInfo { db_path, schema_version, file_count, entry_count, unique_tag_count })
 }
 
+/// The redb change-detection store versions before 0.13 kept beside the entry
+/// cache; the cache tracks its files itself now.
+const OLD_TRACK_FILE: &str = "track_v1.redb";
+
+/// Cache files of older versions in `journal`'s cache directory, with their
+/// sizes: `cache_vN.db` for every N but [`SCHEMA_VERSION`], and the old redb
+/// change-detection store. The current cache is never among them.
+pub fn stale_files(journal: &Journal) -> Result<Vec<(PathBuf, u64)>> {
+    let cache_dir = journal.cache_dir()?;
+    let current = format!("cache_v{SCHEMA_VERSION}.db");
+    let Ok(rd) = std::fs::read_dir(&cache_dir) else { return Ok(Vec::new()) };
+    let mut stale: Vec<(PathBuf, u64)> = rd
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name();
+            let n = name.to_string_lossy();
+            (n.starts_with("cache_v") && n.ends_with(".db") && n != current.as_str())
+                || n == OLD_TRACK_FILE
+        })
+        .map(|e| {
+            let p = e.path();
+            let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+            (p, size)
+        })
+        .collect();
+    stale.sort();
+    Ok(stale)
+}
+
+/// Remove [`stale_files`], with an SQLite file's WAL/SHM sidecars, and return
+/// what was removed.
+pub fn clean_stale_files(journal: &Journal) -> Result<Vec<(PathBuf, u64)>> {
+    let stale = stale_files(journal)?;
+    for (path, _) in &stale {
+        if path.extension().is_some_and(|e| e == "db") {
+            wipe_db_files(path);
+        } else {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(stale)
+}
+
 // ── open helpers ──────────────────────────────────────────────────────────────
 
 fn open_or_init(db_path: &Path) -> Result<Connection> {
