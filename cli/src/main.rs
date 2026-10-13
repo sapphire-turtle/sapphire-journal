@@ -1,7 +1,8 @@
 use anyhow::Result;
 use clap::Parser as _;
 use sapphire_journal::cli::{Cli, Command, FrameworkCommand};
-use sapphire_journal::{commands, root, serve};
+use sapphire_journal::client::Server;
+use sapphire_journal::{commands, serve};
 use sapphire_journal_core::AppKind;
 
 fn main() -> Result<()> {
@@ -24,26 +25,10 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Some(Command::Init { path }) => {
-            sapphire_journal_core::init_app_context(AppKind::Cli);
-            commands::init::run(path)
-        }
-        Some(Command::Entry { action }) => {
-            sapphire_journal_core::init_app_context(AppKind::Cli);
-            commands::entry::run(&root::resolve(cli.journal_dir.as_deref())?, action)
-        }
-        Some(Command::Cache { action }) => {
-            sapphire_journal_core::init_app_context(AppKind::Cli);
-            commands::cache::run(&root::resolve(cli.journal_dir.as_deref())?, action)
-        }
-        Some(Command::Config { action }) => {
-            sapphire_journal_core::init_app_context(AppKind::Cli);
-            let journal = match cli.journal_dir {
-                Some(dir) => Some(dir),
-                None => root::selected().ok().flatten(),
-            };
-            commands::config::run(journal.as_deref(), action)
-        }
+        // The journal's own verbs: requests to the running server.
+        Some(Command::Entry { action }) => commands::entry::run(&Server::new()?, action),
+        Some(Command::Cache { action }) => commands::cache::run(&Server::new()?, action),
+        Some(Command::Config { action }) => commands::config::run(&Server::new()?, action),
     }
 }
 
