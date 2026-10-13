@@ -69,6 +69,4 @@ wildcards = "deny"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# sapphire-framework is pinned to an unreleased branch (sapphire-framework#233)
-# until 0.17 is on crates.io; drop this then.
-allow-git = ["https://github.com/sapphire-turtle/sapphire-framework"]
+allow-git = []

@@ -20,7 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 indexmap = { version = "2", features = ["serde"] }
 # The MCP macros name `rmcp` directly, so it is the version sapphire-framework
-# builds on (`sapphire_framework::mcp::rmcp`): 1.8 on sapphire-framework#233,
+# builds on (`sapphire_framework::mcp::rmcp`): 1.8 in sapphire-framework 0.17,
 # below the 3.2 this repo had moved to; follow the framework when it moves.
 rmcp = { version = "1.8", default-features = false, features = ["server", "macros"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
@@ -30,15 +30,12 @@ schemars = "1.0"
 # subcommand and `/mcp` over HTTP. `redb-store` must be named: with default
 # features off the framework's persistent store silently falls back to
 # in-memory otherwise.
-#
-# Pinned to sapphire-framework#233 (MCP as a framework feature) until it is
-# released; back to `version = "0.17"` then.
-sapphire-framework = { git = "https://github.com/sapphire-turtle/sapphire-framework", branch = "feat/mcp-common", default-features = false }
+sapphire-framework = { version = "0.17", default-features = false }
 # The bridge client an app server connects with. The facade's `bridge` module
 # is the daemon side, so the client is a direct dependency at the same release.
-sapphire-bridge-client = { package = "sapphire-framework-bridge-client", git = "https://github.com/sapphire-turtle/sapphire-framework", branch = "feat/mcp-common" }
-sapphire-workspace = { package = "sapphire-framework-workspace", git = "https://github.com/sapphire-turtle/sapphire-framework", branch = "feat/mcp-common", default-features = false }
-sapphire-track = { package = "sapphire-framework-track", git = "https://github.com/sapphire-turtle/sapphire-framework", branch = "feat/mcp-common" }
+sapphire-bridge-client = { package = "sapphire-framework-bridge-client", version = "0.17" }
+sapphire-workspace = { package = "sapphire-framework-workspace", version = "0.17", default-features = false }
+sapphire-track = { package = "sapphire-framework-track", version = "0.17" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
