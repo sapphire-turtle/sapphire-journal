@@ -1,7 +1,8 @@
 # sapphire-journal
 
 Unified binary for [sapphire-journal](https://github.com/fluo10/sapphire-journal) â€” a Markdown-based task and note manager.
-Provides both the CLI for humans and an MCP server for AI agents.
+One binary is the CLI for humans, the app server that serves, indexes and syncs a journal,
+and the MCP server for AI agents.
 
 ## Installation
 
@@ -56,10 +57,24 @@ sapphire-journal init [PATH]
 
 Creates `.sapphire-journal/config.toml` with the detected local timezone and `.sapphire-journal/.gitignore`.
 
+### Choose the journal to serve
+
+```bash
+sapphire-journal workspace select /path/to/journal
+sapphire-journal service install    # run the server as an OS service
+# or: sapphire-journal serve        # run it in this terminal
+sapphire-journal status
+```
+
+The server serves one journal at a time. The journal commands below work on that
+journal, whether or not the server is running â€” except `entry search`, which asks the
+running server. They do not search upward from the current directory.
+
 ### Global options
 
 ```bash
-# Override journal root (also settable via SAPPHIRE_JOURNAL_DIR env var)
+# Work on another journal than the one the server serves
+# (also settable via SAPPHIRE_JOURNAL_DIR env var)
 sapphire-journal --journal-dir /path/to/journal <command>
 ```
 
@@ -187,13 +202,31 @@ sapphire-journal entry fix <file-or-id>     # rename file to match frontmatter
 sapphire-journal entry remove <file-or-id>
 ```
 
+#### Search
+
+```bash
+sapphire-journal entry search <query>              # full-text (trigram; substring / CJK friendly)
+sapphire-journal entry search --semantic <query>   # vector similarity
+```
+
+Search asks the running server, which indexes the journal it serves. Semantic search
+uses the embedding model of the host's `sapphire-bridge` (`sapphire-journal embedding show`
+to see or change it); without one it falls back to full text.
+
 ### Cache commands
 
 ```bash
-sapphire-journal cache info       # show cache status and statistics
-sapphire-journal cache sync       # incrementally update the cache
-sapphire-journal cache rebuild    # drop and rebuild the cache from scratch
+sapphire-journal cache info       # show the entry cache's status and statistics
+sapphire-journal cache sync       # incrementally update the entry cache
+sapphire-journal cache rebuild    # drop and rebuild the entry cache from scratch
+sapphire-journal cache clean      # remove cache files of older versions
 ```
+
+### Framework commands
+
+`serve`, `status`, `service`, `workspace`, `workgroup`, `device`, `embedding`,
+`external-device` and `mcp` come from [sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework);
+see `sapphire-journal <command> --help`.
 
 ### DATETIME format
 
@@ -216,29 +249,15 @@ timezone = "Asia/Tokyo"   # IANA timezone name
 
 ## MCP server
 
-The MCP (Model Context Protocol) server now ships as a separate `sapphire-journal-mcp` binary in the [sapphire-journal-mcp](../crates/sapphire-journal-mcp/) crate. Install it alongside the CLI to let AI agents (Claude, etc.) read and write journal entries.
+AI agents (Claude, etc.) read and write journal entries over MCP. The tools run on the
+app server, so it must be running (`sapphire-journal serve`, or the OS service).
 
-### Start the server
-
-```bash
-# Open the journal found by walking up from the current directory
-sapphire-journal-mcp
-
-# Open an explicit journal path
-sapphire-journal-mcp --journal-dir /path/to/journal
-
-# Create the journal (and the directory itself) if it doesn't exist, then open it
-sapphire-journal-mcp --journal-dir /path/to/journal --init
-```
-
-The server fails to start when the target directory is not a sapphire-journal â€” pass `--init` to have the server create one in place (no-op when one already exists there).
-
-### Flags and environment variables
-
-| Flag / Variable | Description |
-|---|---|
-| `--journal-dir <DIR>` / `SAPPHIRE_JOURNAL_DIR` | Path to the journal root. If not set, the server walks up from the current directory to find `.sapphire-journal/`. |
-| `--init` | Initialize the target directory as a sapphire-journal if it isn't one already (and create the directory itself if missing). |
+- **stdio**: register `sapphire-journal mcp` with the agent. It talks to the running
+  server and never starts one.
+- **HTTP**: set `[mcp] http = true` in the server's `server.toml` (in the app's config
+  directory); the server then answers at `http://127.0.0.1:3172/mcp` (`[http] listen`
+  changes the address). Every request needs an external device's token:
+  `sapphire-journal external-device add <name>`.
 
 ### Example: Claude Desktop
 
@@ -246,10 +265,8 @@ The server fails to start when the target directory is not a sapphire-journal â€
 {
   "mcpServers": {
     "sapphire-journal": {
-      "command": "sapphire-journal-mcp",
-      "env": {
-        "SAPPHIRE_JOURNAL_DIR": "/path/to/your/journal"
-      }
+      "command": "sapphire-journal",
+      "args": ["mcp"]
     }
   }
 }
@@ -267,10 +284,13 @@ The server fails to start when the target directory is not a sapphire-journal â€
 | `entry_check` | Validate an entry's frontmatter and filename |
 | `entry_fix` | Rename an entry file to match its frontmatter |
 | `entry_remove` | Delete an entry file |
-| `entry_search` | Search entries (vector when embeddings are enabled, FTS otherwise) |
-| `cache_info` | Show cache status and statistics |
-| `cache_sync` | Incrementally update the SQLite cache |
-| `cache_rebuild` | Drop and rebuild the cache from scratch |
+| `cache_info` | Show the entry cache's status and statistics |
+| `cache_sync` | Incrementally update the entry cache |
+| `cache_rebuild` | Drop and rebuild the entry cache from scratch |
+
+Beside them, the framework's read-only tools: `status`, `workspace_show`,
+`workspace_search` (the journal's search: full-text, and semantic when the host's bridge
+embeds), `workspace_read_file`, `workspace_list_dir`, `workgroup_show` and `device_list`.
 
 ### `entry_list` parameters
 

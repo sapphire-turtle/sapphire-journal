@@ -9,14 +9,10 @@ categories = ["text-processing", "filesystem", "data-structures"]
 keywords = ["markdown", "task-management", "notes", "frontmatter", "plain-text"]
 
 [features]
-default = ["redb-store", "fastembed-embed"]
-# Pure-Rust cache backend (redb + tantivy). Default; no SQLite/libsqlite3-sys.
-redb-store      = ["sapphire-workspace/redb-store"]
-fastembed-embed = ["sapphire-workspace/fastembed-embed"]
 # Text-frontend helpers: converters from CLI/MCP-style string inputs into the
 # strongly-typed values consumed by `ops`. GUIs that build typed values
 # directly from widgets should leave this disabled.
-text-input      = []
+text-input = []
 
 [dependencies]
 serde.workspace = true
@@ -29,12 +25,11 @@ rusqlite.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
 uuid = { version = "1", features = ["v4", "serde"] }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
-sapphire-workspace = { package = "sapphire-framework-workspace", version = "0.14", default-features = false }
-# mtime change-detection, split out of the retrieve store in framework PR #75.
-sapphire-track = { package = "sapphire-framework-track", version = "0.14" }
+# `AppContext` only: search is the app server's, not this crate's.
+sapphire-workspace.workspace = true
+# `file_stamp`, for the entry cache's change detection.
+sapphire-track.workspace = true
 grain-id = { version = "0.15", features = ["serde", "rusqlite", "schemars"] }
-dirs = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

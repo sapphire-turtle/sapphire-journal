@@ -1,12 +1,7 @@
 use anyhow::{Context, Result};
-use sapphire_journal_core::{
-    cache,
-    journal::Journal,
-    user_config::{UserConfig, VectorDb},
-    JournalState,
-};
+use sapphire_journal_core::{cache, journal::Journal, JournalState};
 use clap::Subcommand;
-use std::{io::Write as _, path::Path};
+use std::path::Path;
 
 #[derive(Subcommand)]
 pub enum CacheCommand {
@@ -25,42 +20,26 @@ pub enum CacheCommand {
     /// left untouched. Use `cache clean` to remove stale versions.
     Rebuild,
 
-    /// Generate and store embeddings for entries that do not yet have a vector
+    /// Remove stale cache files from previous versions
     ///
-    /// Requires `[cache.embedding]` with `enabled = true`, `vector_db`, and
-    /// `dimension` set in ~/.config/sapphire-journal/config.toml.
-    /// When `enabled = true`, this also runs automatically after `cache sync`.
-    Embed,
-
-    /// Remove stale cache files from previous schema versions
-    ///
-    /// Deletes old `cache.vN.db` files that were kept after a schema upgrade.
+    /// Deletes old `cache.vN.db` files that were kept after a schema upgrade,
+    /// and the `track_v1.redb` change-detection store older versions kept.
     /// The current version is never touched.
     Clean,
 }
 
-pub fn run(journal_dir: Option<&Path>, cmd: CacheCommand) -> Result<()> {
-    let journal = open_journal(journal_dir)?;
+pub fn run(root: &Path, cmd: CacheCommand) -> Result<()> {
+    let journal = Journal::from_root(root.to_path_buf())
+        .context("not a sapphire-journal — run `sapphire-journal init` to initialize one")?;
     match cmd {
         CacheCommand::Info => info(&journal),
         CacheCommand::Sync => sync(&journal),
         CacheCommand::Rebuild => rebuild(&journal),
-        CacheCommand::Embed => embed(&journal),
         CacheCommand::Clean => clean(&journal),
     }
 }
 
-fn open_journal(journal_dir: Option<&Path>) -> Result<Journal> {
-    match journal_dir {
-        Some(dir) => Journal::from_root(dir.to_path_buf())
-            .context("not a sapphire-journal — run `sapphire-journal init` to initialize one"),
-        None => Journal::find()
-            .context("not in a sapphire-journal — run `sapphire-journal init` to initialize one"),
-    }
-}
-
 fn info(journal: &Journal) -> Result<()> {
-    let user_cfg = UserConfig::load()?;
     let state = JournalState::open(journal.clone())?;
     let info = state.cache_info()?;
     println!("path:           {}", info.db_path.display());
@@ -86,46 +65,14 @@ fn info(journal: &Journal) -> Result<()> {
         }
     }
 
-    if let Some(embed_cfg) = &user_cfg.cache.retrieve.embedding {
-        let enabled_str = if embed_cfg.enabled { "enabled" } else { "disabled" };
-        println!("embedding:      {} (provider={}, model={})", enabled_str, embed_cfg.provider, embed_cfg.model);
-
-        match user_cfg.cache.retrieve.db {
-            VectorDb::None => {}
-            VectorDb::Redb => {
-                if embed_cfg.dimension.is_some() {
-                    state.load_retrieve_backend(&user_cfg).map_err(anyhow::Error::msg)?;
-                    match state.retrieve_db().vec_info() {
-                        Ok(vi) => {
-                            println!("vector backend: redb (dim={})", vi.embedding_dim);
-                            println!("vectors:        {} indexed, {} pending", vi.vector_count, vi.pending_count);
-                        }
-                        Err(e) => eprintln!("warn: could not read vector stats: {e}"),
-                    }
-                } else {
-                    println!("vector backend: redb (dimension not configured)");
-                }
-            }
-        }
-    }
-
     Ok(())
 }
 
 fn sync(journal: &Journal) -> Result<()> {
-    let user_cfg = UserConfig::load()?;
     let state = JournalState::open(journal.clone())?;
-
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let embedded = rt.block_on(state.sync_and_embed(&user_cfg))?;
-
+    state.sync()?;
     let info = state.cache_info()?;
     println!("synced: {} entries", info.entry_count);
-    if embedded > 0 {
-        println!("embedded: {embedded} new chunks");
-    }
     Ok(())
 }
 
@@ -134,50 +81,6 @@ fn rebuild(journal: &Journal) -> Result<()> {
     state.sync()?;
     let info = state.cache_info()?;
     println!("rebuilt: {} entries indexed", info.entry_count);
-    Ok(())
-}
-
-fn embed(journal: &Journal) -> Result<()> {
-    let user_cfg = UserConfig::load()?;
-    let embed_cfg = user_cfg.cache.retrieve.embedding.as_ref().ok_or_else(|| {
-        anyhow::anyhow!(
-            "[cache.retrieve.embedding] section is required in ~/.config/sapphire-journal/config.toml"
-        )
-    })?;
-    if !embed_cfg.enabled {
-        anyhow::bail!(
-            "cache.retrieve.embedding.enabled is false in ~/.config/sapphire-journal/config.toml"
-        );
-    }
-    if user_cfg.cache.retrieve.db == VectorDb::None {
-        anyhow::bail!(
-            "cache.retrieve.db is \"none\" in ~/.config/sapphire-journal/config.toml — \
-             set it to \"redb\" to use vector search"
-        );
-    }
-    if embed_cfg.dimension.is_none() {
-        anyhow::bail!(
-            "`dimension` is required in [cache.retrieve.embedding] \
-             (e.g. dimension = 1536 for text-embedding-3-small)"
-        );
-    }
-
-    let state = JournalState::open(journal.clone())?;
-    state.sync()?;
-
-    let progress = |done: usize, total: usize| {
-        eprint!("\rembedding chunks: {done}/{total}");
-        let _ = std::io::stderr().flush();
-    };
-
-    let total_embedded = state.embed_pending(&user_cfg, progress).map_err(anyhow::Error::msg)?;
-
-    if total_embedded > 0 {
-        eprintln!(); // newline after progress line
-        println!("embedded: {total_embedded} chunks");
-    } else {
-        println!("all chunks already have embeddings");
-    }
     Ok(())
 }
 
@@ -195,6 +98,16 @@ fn clean(journal: &Journal) -> Result<()> {
             println!("removed: {} ({})", path.display(), human_size(size));
             removed_any = true;
         }
+        // The redb change-detection store versions before 0.13 kept; the
+        // entry cache tracks its files itself now.
+        let old_track = cache_dir.join(OLD_TRACK_FILE);
+        if old_track.is_file() {
+            let size = file_size(&old_track);
+            std::fs::remove_file(&old_track)
+                .with_context(|| format!("failed to remove {}", old_track.display()))?;
+            println!("removed: {} ({})", old_track.display(), human_size(size));
+            removed_any = true;
+        }
     }
 
     if !removed_any {
@@ -204,6 +117,9 @@ fn clean(journal: &Journal) -> Result<()> {
 }
 
 // ── stale version discovery ───────────────────────────────────────────────────
+
+/// The redb change-detection store older versions kept beside the entry cache.
+const OLD_TRACK_FILE: &str = "track_v1.redb";
 
 /// Return `(path, size)` for every `cache.vN.db` in `cache_dir` where N ≠ SCHEMA_VERSION.
 fn find_stale_sqlite(cache_dir: &Path) -> Vec<(std::path::PathBuf, u64)> {

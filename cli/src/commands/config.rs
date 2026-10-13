@@ -7,19 +7,20 @@ use std::path::Path;
 pub enum ConfigCommand {
     /// Show the current effective configuration
     ///
-    /// Displays the user-level config (~/.config/sapphire-journal/config.toml) and,
-    /// when run inside a sapphire-journal, the journal-level config
-    /// (.sapphire-journal/config.toml) as well.
+    /// Displays the user-level config (~/.config/sapphire-journal/config.toml) and
+    /// the journal-level config (.sapphire-journal/config.toml) of the journal
+    /// `--journal-dir` names, or else of the one the server serves.
     Show,
 }
 
-pub fn run(journal_dir: Option<&Path>, cmd: ConfigCommand) -> Result<()> {
+/// `root` is the journal whose config to show beside the user's, if there is one.
+pub fn run(root: Option<&Path>, cmd: ConfigCommand) -> Result<()> {
     match cmd {
-        ConfigCommand::Show => show(journal_dir),
+        ConfigCommand::Show => show(root),
     }
 }
 
-fn show(journal_dir: Option<&Path>) -> Result<()> {
+fn show(root: Option<&Path>) -> Result<()> {
     // ── User config ──────────────────────────────────────────────────────────
     let user_path = UserConfig::path();
     println!("## user config");
@@ -32,29 +33,17 @@ fn show(journal_dir: Option<&Path>) -> Result<()> {
         println!();
         println!("# To customise, create the file above with settings such as:");
         println!("#");
-        println!("# [cache.embedding]");
-        println!("# enabled   = true");
-        println!("# vector_db = \"redb\"   # \"none\" | \"redb\"");
-        println!("# provider  = \"openai\"");
-        println!("# model     = \"text-embedding-3-small\"");
-        println!("# dimension = 1536");
-        println!("# api_key_env = \"OPENAI_API_KEY\"");
+        println!("# sync_interval_minutes = 10   # how often the server re-scans the entry cache; 0 = never");
         println!("#");
-        println!("# For local providers (Ollama, fastembed, etc.):");
-        println!("# provider = \"ollama\"");
-        println!("# model    = \"nomic-embed-text\"");
-        println!("# dimension = 768");
-        println!("# base_url = \"http://localhost:11434\"");
+        println!("# Embedding is configured on the host's sapphire-bridge, not here:");
+        println!("# see `sapphire-journal embedding show`.");
     }
 
     println!();
 
     // ── Journal config ───────────────────────────────────────────────────────
     println!("## journal config");
-    let journal = match journal_dir {
-        Some(dir) => Journal::from_root(dir.to_path_buf()).ok(),
-        None => Journal::find().ok(),
-    };
+    let journal = root.and_then(|dir| Journal::from_root(dir.to_path_buf()).ok());
     match journal {
         Some(ref j) => {
             let journal_config_path = j.journal_dir().join("config.toml");
@@ -67,7 +56,7 @@ fn show(journal_dir: Option<&Path>) -> Result<()> {
             }
         }
         None => {
-            println!("(not inside a sapphire-journal)");
+            println!("(no journal: pass --journal-dir, or select one with `sapphire-journal workspace select`)");
         }
     }
 

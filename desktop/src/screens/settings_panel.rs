@@ -13,7 +13,6 @@ use sapphire_journal_core::{
 };
 
 use crate::app::App;
-use crate::settings::Settings;
 
 const DUP_TITLE_OPTIONS: &[&str] = &["allow", "warn", "error"];
 
@@ -27,10 +26,6 @@ pub struct SettingsPanelState {
 
     // ── Global ─────────────────────────────────────────────────────────────
     sync_interval_minutes: String,
-
-    // ── MCP HTTP server (GUI-only setting) ─────────────────────────────────
-    mcp_http_enabled: bool,
-    mcp_http_port: String,
 
     error_msg: Option<String>,
     info_msg: Option<String>,
@@ -64,18 +59,12 @@ impl SettingsPanelState {
             .map(|n| n.to_string())
             .unwrap_or_else(|| "10".to_string());
 
-        let gui_settings = Settings::load().unwrap_or_default();
-        let mcp_http_enabled = gui_settings.mcp_http.enabled;
-        let mcp_http_port = gui_settings.mcp_http.port.to_string();
-
         Self {
             journal_root,
             git_remote,
             duplicate_title,
             entries_dir,
             sync_interval_minutes,
-            mcp_http_enabled,
-            mcp_http_port,
             error_msg: None,
             info_msg: None,
         }
@@ -90,15 +79,6 @@ impl SettingsPanelState {
             Err(_) => {
                 self.error_msg =
                     Some("Sync interval must be a non-negative integer (0 to disable).".to_string());
-                return false;
-            }
-        };
-
-        let mcp_port = match self.mcp_http_port.trim().parse::<u16>() {
-            Ok(n) if n > 0 => n,
-            _ => {
-                self.error_msg =
-                    Some("MCP HTTP port must be an integer between 1 and 65535.".to_string());
                 return false;
             }
         };
@@ -140,14 +120,6 @@ impl SettingsPanelState {
                 self.error_msg = Some(format!("Failed to set git remote: {e}"));
                 return false;
             }
-        }
-
-        let mut gui_settings = Settings::load().unwrap_or_default();
-        gui_settings.mcp_http.enabled = self.mcp_http_enabled;
-        gui_settings.mcp_http.port = mcp_port;
-        if let Err(e) = gui_settings.save() {
-            self.error_msg = Some(format!("Failed to save GUI settings: {e}"));
-            return false;
         }
 
         self.info_msg = Some(if entries_dir_changed {
@@ -258,19 +230,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             ui.separator();
             ui.add_space(6.0);
 
-            ui.heading("MCP HTTP server");
+            ui.heading("MCP");
             ui.weak(
-                "Exposes the open journal to AI agents over localhost. \
-                 Toggling restarts the server while a journal is open.",
+                "AI agents reach the journal through the sapphire-journal server: \
+                 `sapphire-journal mcp` on stdio, or http://127.0.0.1:3172/mcp once \
+                 `[mcp] http = true` is set in the server's server.toml.",
             );
-            ui.add_space(4.0);
-
-            ui.checkbox(&mut state.mcp_http_enabled, "Enable MCP HTTP server");
-            ui.add_space(4.0);
-
-            ui.label("Port (loopback only)");
-            ui.add(egui::TextEdit::singleline(&mut state.mcp_http_port).desired_width(80.0));
-            ui.weak("Endpoint: http://127.0.0.1:<port>/mcp");
 
             if let Some(msg) = state.error_msg.clone() {
                 ui.add_space(8.0);
@@ -297,12 +262,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     if !open_flag {
         close = true;
     }
-    if do_save && state.save() {
-        // Refresh the in-memory copy used by `App::reconcile_mcp_server` so
-        // the server starts/stops/restarts on the next frame.
-        if let Ok(s) = Settings::load() {
-            app.settings = s;
-        }
+    if do_save {
+        state.save();
     }
     if !close {
         app.settings_panel = Some(state);

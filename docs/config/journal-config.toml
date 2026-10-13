@@ -3,8 +3,8 @@
 # Location: <journal-root>/.sapphire-journal/config.toml
 #
 # This file is committed to the journal repo and shared across all machines
-# that open the journal. Keep host-specific settings (cache backend, embedding
-# API keys, sync cadence) in the user-level config instead.
+# that open the journal. Keep host-specific settings (sync cadence) in the
+# user-level config instead; embedding is the host sapphire-bridge's.
 
 [journal]
 # How to handle two entries with the same title during cache sync.

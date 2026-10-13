@@ -29,28 +29,26 @@ impl Journal {
         }
     }
 
-    /// Walk up from `start` until a directory containing `.sapphire-journal/` is found.
-    ///
-    /// Returns `Err(Error::JournalNotFound)` if no such directory exists.
-    pub fn find_from(start: &Path) -> Result<Self> {
-        let mut current = start.to_path_buf();
-        loop {
-            if current.join(JOURNAL_DIR_NAME).is_dir() {
-                return Ok(Journal { root: current });
-            }
-            if !current.pop() {
-                return Err(Error::JournalNotFound);
-            }
-        }
-    }
-
-    /// Walk up from the current working directory.
-    pub fn find() -> Result<Self> {
-        let cwd = std::env::current_dir()?;
-        Self::find_from(&cwd)
-    }
-
     /// Path to the `.sapphire-journal` directory itself.
+    /// Turn `root` into a journal: create it if need be, then its
+    /// `.sapphire-journal/` with a default `config.toml`.
+    ///
+    /// Returns `Err(Error::EntryAlreadyExists)` if `root` is a journal already.
+    pub fn init(root: &Path) -> Result<Self> {
+        std::fs::create_dir_all(root)?;
+        let journal_dir = root.join(JOURNAL_DIR_NAME);
+        if journal_dir.exists() {
+            return Err(Error::EntryAlreadyExists(journal_dir.display().to_string()));
+        }
+        std::fs::create_dir(&journal_dir)?;
+        let config = toml::to_string_pretty(&JournalConfig::default())
+            .map_err(|e| Error::InvalidConfig(e.to_string()))?;
+        std::fs::write(journal_dir.join("config.toml"), config)?;
+        // Ignore the cache directory (SQLite etc.) while keeping config.toml tracked.
+        std::fs::write(journal_dir.join(".gitignore"), "cache/\n")?;
+        Ok(Journal { root: root.to_path_buf() })
+    }
+
     pub fn journal_dir(&self) -> PathBuf {
         self.root.join(JOURNAL_DIR_NAME)
     }

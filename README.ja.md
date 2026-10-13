@@ -100,18 +100,27 @@ cargo install sapphire-journal-cli
 
 コマンドリファレンス全体は[cli/README.md](cli/README.md)を参照してください。
 
-**ジャーナル**とは、`.sapphire-journal/`ディレクトリを含むディレクトリツリーのことです。`sapphire-journal`はカレントディレクトリから上へ辿ってそれを特定します。`git`が`.git/`を見つけるのと同じ方法です。`sapphire-journal init`で作成します。
+**ジャーナル**とは、`.sapphire-journal/`ディレクトリを含むディレクトリツリーのことです。`sapphire-journal init`で作成します。
+
+`sapphire-journal`は単一のバイナリです。ジャーナル独自のコマンド（`entry`、`cache`など）と、[sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework)のコマンド（`serve`、`status`、`service`、`workspace`、`mcp`など）が並んでいます。引数なし（または`serve`）で起動するとアプリサーバーになり、ジャーナルを1つ提供して検索用に索引し、ホストの`sapphire-bridge`を通じて同期し、MCPに応答します。提供するジャーナルは`sapphire-journal workspace select <dir>`で選びます。ジャーナルのコマンドは、`--journal-dir`で別のものを指定しない限りそのジャーナルに対して働きます。
+
+```sh
+sapphire-journal init ~/journal
+sapphire-journal workspace select ~/journal
+sapphire-journal service install        # またはターミナルで `sapphire-journal serve`
+```
+
+AIエージェントは`sapphire-journal mcp`（stdio）で接続します。サーバーの`server.toml`に`[mcp] http = true`を設定すれば、HTTPの`http://127.0.0.1:3172/mcp`でも接続できます。意味検索にはホストの`sapphire-bridge`が動かす埋め込みモデルを使います（`sapphire-journal embedding show`）。モデルがなければ全文検索になります。
 
 ## プロジェクト構成
 
 ```
 sapphire-journal/
-├── cli/                     # CLIバイナリ（sapphire-journal）
+├── cli/                     # sapphire-journalバイナリ：CLIとアプリサーバー
 ├── desktop/                 # デスクトップGUI（egui）
-├── server/                  # セルフホストのリモートワークスペース＋MCPサーバー
 └── crates/
-│   ├── sapphire-journal-core/   # データモデル、Markdownパーサ/シリアライザ、SQLiteキャッシュ
-│   └── sapphire-journal-mcp/    # MCPサーバーライブラリ（cliとserverが組み込み）
+    ├── sapphire-journal-core/   # データモデル、Markdownパーサ/シリアライザ、SQLiteのentryキャッシュ
+    └── sapphire-journal-mcp/    # ジャーナルのサーバーメソッドと、それを呼ぶMCPツール
 ```
 
 ## ステータス

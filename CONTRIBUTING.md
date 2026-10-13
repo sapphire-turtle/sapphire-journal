@@ -18,7 +18,7 @@ repos across this family consistent.
 ## Repository layout
 
 - **Binary crates** live in a directory named after the short name
-  (`cli/`, `desktop/`, `server/`) directly under the repo root.
+  (`cli/`, `desktop/`) directly under the repo root.
 - **Library crates** live under `crates/`, in a directory named after the
   full crate name (e.g. `crates/sapphire-journal-core/`).
 - Non-crate directories (`docs/`) stay at the repo root.
@@ -41,7 +41,7 @@ repos across this family consistent.
 
 ## リポジトリ構成
 
-- **バイナリ用クレート**は、短い名前（`cli/`, `desktop/`, `server/`）の
+- **バイナリ用クレート**は、短い名前（`cli/`, `desktop/`）の
   ディレクトリをリポジトリ直下に置きます。
 - **ライブラリ用クレート**は `crates/` 直下に、正式なクレート名の
   ディレクトリで置きます（例: `crates/sapphire-journal-core/`）。

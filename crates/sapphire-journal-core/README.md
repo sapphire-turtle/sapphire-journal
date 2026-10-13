@@ -6,7 +6,8 @@ Core library for [sapphire-journal](https://github.com/fluo10/sapphire-journal) 
 
 - **Data model** — `Entry`, `Frontmatter`, `TaskMeta`, `EventMeta`
 - **Parser / serializer** — reads and writes `.md` files with YAML frontmatter (`parse_entry`, `read_entry`, `render_entry`, `write_entry`)
-- **Journal detection** — `Journal::find()` walks up the directory tree to locate `.sapphire-journal/`, the same way `git` finds `.git/`
+- **Journal root** — `Journal::from_root()` opens a directory containing `.sapphire-journal/`, and `Journal::init()` creates one
+- **Entry cache** — a machine-local SQLite cache of entry metadata and tags (`cache`, `JournalState`)
 - **Filename helpers** — `slugify`, `entry_filename`, `new_entry_path` for the `{year}/{caretta-id}_{slug}.md` layout
 
 ## License

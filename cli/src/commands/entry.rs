@@ -7,10 +7,10 @@ use sapphire_journal_core::{
     period::{parse_datetime, parse_datetime_end},
     state as core_state,
     text_input::filter as core_filter,
-    user_config::UserConfig,
     JournalState,
 };
-use sapphire_journal_core::{FtsQuery, VectorQuery};
+use sapphire_framework::backend::{IpcBackend, SearchMode, WorkspaceBackend as _};
+use sapphire_framework::ipc::Endpoint;
 
 use chrono::NaiveDateTime;
 use clap::{Args, Subcommand};
@@ -229,11 +229,12 @@ pub enum EntryCommand {
         /// Path to the entry file, or an ID / ID prefix
         entry: String,
     },
-    /// Search entries by full-text or semantic similarity
+    /// Search the journal by full-text or semantic similarity
     ///
-    /// Without --semantic, uses the FTS5 trigram index (substring / CJK friendly).
-    /// With --semantic, embeds the query and runs a KNN search against stored vectors
-    /// (requires vector_db = "sqlite_vec" and [cache.embedding] in the user config).
+    /// Asks the running server, which indexes the journal it serves: without
+    /// --semantic, the trigram full-text index (substring / CJK friendly); with
+    /// --semantic, the vectors the host's sapphire-bridge embeds. Without an
+    /// embedding model, semantic search falls back to full text.
     Search {
         /// Search query text
         query: String,
@@ -325,8 +326,12 @@ impl From<EntryFields> for CoreEntryFields {
     }
 }
 
-pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
-    let state = core_state::open_state(journal_dir)?;
+pub fn run(root: &Path, cmd: EntryCommand) -> Result<()> {
+    // Search is the server's; it never needs the entry cache.
+    if let EntryCommand::Search { query, semantic, limit } = cmd {
+        return search(&query, semantic, limit);
+    }
+    let state = core_state::open_state(root)?;
 
     match cmd {
         EntryCommand::List { filter: filter_args, json, emoji, nerd } => {
@@ -369,9 +374,7 @@ pub fn run(journal_dir: Option<&Path>, cmd: EntryCommand) -> Result<()> {
             entry_path(&state, entry.as_deref(), new, parent.as_deref())
         }
         EntryCommand::Remove { entry } => remove(&state, &entry),
-        EntryCommand::Search { query, semantic, limit } => {
-            search(&state, &query, semantic, limit)
-        }
+        EntryCommand::Search { .. } => unreachable!("handled above"),
     }
 }
 
@@ -556,7 +559,7 @@ fn new(state: &JournalState, fields: EntryFields) -> Result<()> {
     state.sync()?;
     let dest = ops::create_entry(state, fields.into())?;
     if let Ok(conn) = state.open_conn() {
-        let _ = cache::upsert_entry_from_path(&conn, &dest, state.retrieve_db(), state.track());
+        let _ = cache::upsert_entry_from_path(&conn, &dest);
     }
     println!("created: {}", dest.display());
     Ok(())
@@ -582,7 +585,7 @@ fn edit(path: &Path, state: &JournalState) -> Result<()> {
         None           => { println!("updated: {}", path.display()); path.to_path_buf() }
     };
     if let Ok(conn) = state.open_conn() {
-        let _ = cache::upsert_entry_from_path(&conn, &final_path, state.retrieve_db(), state.track());
+        let _ = cache::upsert_entry_from_path(&conn, &final_path);
     }
     Ok(())
 }
@@ -606,7 +609,7 @@ fn edit_new(state: &JournalState) -> Result<()> {
         None           => { println!("created: {}", path.display()); path.clone() }
     };
     if let Ok(conn) = state.open_conn() {
-        let _ = cache::upsert_entry_from_path(&conn, &final_path, state.retrieve_db(), state.track());
+        let _ = cache::upsert_entry_from_path(&conn, &final_path);
     }
     Ok(())
 }
@@ -637,10 +640,10 @@ fn set(state: &JournalState, path: &Path, fields: EntryFields, no_parent: bool) 
     }
     let new_path_opt = ops::update_entry(path, &conn, core_fields)?;
     if let Some(new_path) = new_path_opt {
-        let _ = cache::upsert_entry_from_path(&conn, &new_path, state.retrieve_db(), state.track());
+        let _ = cache::upsert_entry_from_path(&conn, &new_path);
         println!("updated and renamed: {}", new_path.display());
     } else {
-        let _ = cache::upsert_entry_from_path(&conn, path, state.retrieve_db(), state.track());
+        let _ = cache::upsert_entry_from_path(&conn, path);
         println!("updated: {}", path.display());
     }
     Ok(())
@@ -668,7 +671,7 @@ fn fix(state: &JournalState, entry: &str) -> Result<()> {
     match ops::fix_entry(&path)? {
         Some(new_path) => {
             if let Ok(conn) = state.open_conn() {
-                let _ = cache::upsert_entry_from_path(&conn, &new_path, state.retrieve_db(), state.track());
+                let _ = cache::upsert_entry_from_path(&conn, &new_path);
             }
             println!(
                 "renamed: {} → {}",
@@ -711,7 +714,7 @@ fn remove(state: &JournalState, entry: &str) -> Result<()> {
     let path = resolve_entry(state, entry)?;
     ops::remove_entry(&path)?;
     if let Ok(conn) = state.open_conn() {
-        let _ = cache::remove_from_cache(&conn, &path, state.retrieve_db(), state.track());
+        let _ = cache::remove_from_cache(&conn, &path);
     }
     println!("removed: {}", path.display());
     Ok(())
@@ -719,52 +722,36 @@ fn remove(state: &JournalState, entry: &str) -> Result<()> {
 
 // ── search ────────────────────────────────────────────────────────────────────
 
-fn search(state: &JournalState, query: &str, semantic: bool, limit: usize) -> Result<()> {
-    if semantic {
-        // ── vector similarity search ──────────────────────────────────────────
-        state.sync()?;
-        let user_cfg = UserConfig::load()?;
-        core_state::bootstrap_embedder(state, &user_cfg)?;
-        let embedder = state.embedder().ok_or_else(|| {
-            anyhow::anyhow!(
-                "[cache.embedding] is required in ~/.config/sapphire-journal/config.toml \
-                 for semantic search"
-            )
-        })?;
+fn search(query: &str, semantic: bool, limit: usize) -> Result<()> {
+    let mode = if semantic { SearchMode::Semantic } else { SearchMode::Fts };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let results = runtime.block_on(async {
+        let app = sapphire_journal_core::JOURNAL_CTX.app_name;
+        let endpoint = Endpoint::for_app(app)?;
+        let backend =
+            IpcBackend::connect(&endpoint, app, "cli", env!("CARGO_PKG_VERSION"), None).await?;
+        // The CLI writes entries without the server; catch the index up with
+        // them first, incrementally, as the cache is before a listing.
+        backend.sync().await?;
+        anyhow::Ok(backend.search(query, limit, mode).await?)
+    })?;
 
-        let pending = state.retrieve_db().vec_info()
-            .map(|vi| vi.pending_count)
-            .unwrap_or(0);
-        if pending > 0 && pending <= 50 {
-            let _ = state.retrieve_db().embed_pending(embedder, |_, _| {});
-        }
-
-        let q = VectorQuery::new(query, embedder).limit(limit);
-        let results = state.retrieve_db().search_similar(&q)
-            .map_err(anyhow::Error::msg)?;
-        if results.is_empty() {
-            println!("no results");
-            return Ok(());
-        }
-        for r in &results {
+    if results.is_empty() {
+        println!("no results");
+        return Ok(());
+    }
+    for r in &results {
+        if semantic {
             println!("{:.4}  {}", r.score, r.path);
-        }
-    } else {
-        // ── full-text search (FTS5 trigram) ───────────────────────────────────
-        state.sync()?;
-        let q = FtsQuery::new(query).limit(limit);
-        let results = state.retrieve_db().search_fts(&q)
-            .map_err(anyhow::Error::msg)?;
-
-        if results.is_empty() {
-            println!("no results");
-            return Ok(());
-        }
-        for r in &results {
+        } else {
             println!("{}", r.path);
         }
+        if !r.snippet.is_empty() {
+            println!("    {}", r.snippet);
+        }
     }
-
     Ok(())
 }
 

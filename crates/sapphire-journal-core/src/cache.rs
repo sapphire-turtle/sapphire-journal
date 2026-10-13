@@ -12,12 +12,17 @@
 //!
 //! # Schema
 //!
-//! - `files`: tracks every `.md` file ever scanned (path + mtime).
-//! - `entries`: managed-entry metadata (no body — body lives in the retrieve DB).
+//! - `files`: tracks every `.md` file ever scanned (path + mtime + size), the
+//!   change-detection snapshot `sync_cache` diffs the disk against.
+//! - `entries`: managed-entry metadata (no body — read it from disk).
 //! - `tags`: many-to-many tag index for efficient tag filtering.
 //!
-//! Full-text search and vector search are delegated to
-//! [`sapphire_retrieve::RetrieveDb`].
+//! Full-text and vector search are not here: the framework's app server indexes
+//! every file of the workspace itself (`workspace.search`).
+//!
+//! The snapshot lives in SQLite rather than in a redb store so that every
+//! process — the app server, a one-shot CLI command, the desktop app — can open
+//! the cache at once. redb takes an exclusive lock on its file.
 //!
 //! # Schema versioning
 //!
@@ -33,8 +38,7 @@ use std::{
 
 use grain_id::GrainId;
 use rusqlite::{params, Connection, OptionalExtension as _};
-use sapphire_track::{file_stamp, FileStamp, TrackStore};
-use sapphire_workspace::RetrieveDb;
+use sapphire_track::{file_stamp, FileStamp};
 
 use crate::{
     error::{Error, Result},
@@ -45,7 +49,7 @@ use crate::{
 // ── schema version ────────────────────────────────────────────────────────────
 
 /// Stored in `PRAGMA user_version`.  Increment whenever the schema changes.
-pub const SCHEMA_VERSION: i32 = 5;
+pub const SCHEMA_VERSION: i32 = 6;
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +84,12 @@ CREATE TABLE IF NOT EXISTS tags (
     PRIMARY KEY (entry_id, tag)
 );
 CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
+
+CREATE TABLE IF NOT EXISTS files (
+    path     TEXT    PRIMARY KEY,
+    mtime_ns INTEGER NOT NULL,
+    len      INTEGER NOT NULL
+);
 ";
 
 // ── public API ────────────────────────────────────────────────────────────────
@@ -116,15 +126,12 @@ pub struct CacheInfo {
 }
 
 /// Collect cache statistics for display.
-pub fn cache_info(
-    journal: &Journal,
-    conn: &Connection,
-    track: &dyn TrackStore,
-) -> Result<CacheInfo> {
+pub fn cache_info(journal: &Journal, conn: &Connection) -> Result<CacheInfo> {
     let db_path = db_path(&journal.cache_dir()?);
     let schema_version =
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
-    let file_count = track.count()?;
+    let file_count =
+        conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))? as u64;
     let entry_count =
         conn.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get::<_, i64>(0))? as u64;
     let unique_tag_count =
@@ -168,41 +175,22 @@ fn wipe_db_files(db_path: &Path) {
 /// Files whose mtime changed or whose path is new are re-parsed and upserted.
 /// Files present in the DB but gone from disk are removed.
 ///
-/// When `retrieve` is provided, document upserts and removals are mirrored to
-/// the retrieve database (FTS + vector index) in the same pass.
-pub fn sync_cache(
-    journal: &Journal,
-    conn: &Connection,
-    retrieve: &RetrieveDb,
-    track: &dyn TrackStore,
-) -> Result<()> {
+pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
     let disk_files = collect_stamps(journal);
     let disk_paths: HashSet<String> = disk_files
         .iter()
         .map(|(p, _)| p.to_string_lossy().into_owned())
         .collect();
 
-    let db_files = track.mtimes()?;
+    let db_files = stored_stamps(conn)?;
 
     conn.execute_batch("PRAGMA defer_foreign_keys=ON; BEGIN")?;
 
     // ── delete files removed from disk ───────────────────────────────────────
     for db_path in db_files.keys() {
         if !disk_paths.contains(db_path.as_str()) {
-            // Fetch entry ID before cascade-deleting so we can remove it from
-            // the retrieve DB as well.
-            let entry_id: Option<i64> = conn
-                .query_row(
-                    "SELECT id FROM entries WHERE path = ?1",
-                    [db_path.as_str()],
-                    |row| row.get(0),
-                )
-                .ok();
             conn.execute("DELETE FROM entries WHERE path = ?1", [db_path])?;
-            let _ = track.remove(db_path);
-            if let Some(id) = entry_id {
-                let _ = retrieve.remove_document(id);
-            }
+            remove_stamp(conn, db_path)?;
         }
     }
 
@@ -219,13 +207,11 @@ pub fn sync_cache(
                     let entry = increment_until_free(conn, entry)?;
                     let final_stamp = file_stamp(&entry.path);
                     let final_str = entry.path.to_string_lossy();
-                    let _ = track.upsert(final_str.as_ref(), final_stamp);
+                    upsert_stamp(conn, final_str.as_ref(), final_stamp)?;
                     upsert_entry(conn, &entry)?;
-                    let doc = entry_to_document(&entry);
-                    let _ = retrieve.upsert_document(&doc);
                 }
                 Err(e) => {
-                    let _ = track.upsert(path_str.as_ref(), *mtime);
+                    upsert_stamp(conn, path_str.as_ref(), *mtime)?;
                     conn.execute(
                         "DELETE FROM entries WHERE path = ?1",
                         [path_str.as_ref()],
@@ -300,7 +286,7 @@ pub fn find_entry_by_title(
             let (id, path_str) = rows.into_iter().next().unwrap();
             if !PathBuf::from(&path_str).exists() {
                 conn.execute("DELETE FROM entries WHERE path = ?1", [&path_str])?;
-                // retrieve DB (files + documents) is cleaned up on the next sync_cache call.
+                // Its `files` row is cleaned up on the next sync_cache call.
                 return Err(Error::EntryNotFoundByTitle(title.to_owned()));
             }
             fetch_full_entry(conn, id)
@@ -417,52 +403,23 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
 /// Remove an entry row from the cache by file path.
 ///
 /// Tags are removed automatically via `ON DELETE CASCADE`.
-/// Also removes the document from the retrieve database (FTS + chunks).
-pub fn remove_from_cache(
-    conn: &Connection,
-    path: &Path,
-    retrieve: &RetrieveDb,
-    track: &dyn TrackStore,
-) -> Result<()> {
+pub fn remove_from_cache(conn: &Connection, path: &Path) -> Result<()> {
     let path_str = path.to_string_lossy();
-
-    let entry_id: Option<i64> = conn
-        .query_row(
-            "SELECT id FROM entries WHERE path = ?1",
-            [path_str.as_ref()],
-            |row| row.get(0),
-        )
-        .ok();
-
     conn.execute("DELETE FROM entries WHERE path = ?1", [path_str.as_ref()])?;
-    let _ = track.remove(path_str.as_ref());
-
-    if let Some(id) = entry_id {
-        let _ = retrieve.remove_document(id);
-    }
-
-    Ok(())
+    remove_stamp(conn, path_str.as_ref())
 }
 
 /// Upsert a single entry into the cache by re-reading its file.
 ///
 /// Use this after `create_entry` or `update_entry` to keep the cache warm
 /// without a full sync round-trip.
-pub fn upsert_entry_from_path(
-    conn: &Connection,
-    path: &Path,
-    retrieve: &RetrieveDb,
-    track: &dyn TrackStore,
-) -> Result<()> {
+pub fn upsert_entry_from_path(conn: &Connection, path: &Path) -> Result<()> {
     let entry = read_entry(path)?;
     let entry = increment_until_free(conn, entry)?;
     let mtime = file_stamp(&entry.path);
     let path_str = entry.path.to_string_lossy();
-    track.upsert(path_str.as_ref(), mtime)?;
-    upsert_entry(conn, &entry)?;
-    let doc = entry_to_document(&entry);
-    let _ = retrieve.upsert_document(&doc);
-    Ok(())
+    upsert_stamp(conn, path_str.as_ref(), mtime)?;
+    upsert_entry(conn, &entry)
 }
 
 // ── internals ─────────────────────────────────────────────────────────────────
@@ -553,16 +510,9 @@ fn fetch_full_entry(
 /// a new id.** Nothing is destroyed, so it is safe to apply eagerly on every
 /// sync.
 ///
-/// The other half lives in `sapphire-journal-server`'s `dedupe` module
-/// (`resolve_duplicates`) and only ever sees what this function cannot: a file
-/// whose name carries a valid id but whose contents do not parse (a partial
-/// write, an editor artifact, a sync push of non-frontmatter content).
-/// `read_entry` fails on those, `sync_cache` skips them, and they stay
-/// duplicated in the server's change log — so the server resolves them itself,
-/// by moving the loser out of the journal rather than by re-minting it.
-///
-/// Two functions, one policy, split by what each can see; changing either one's
-/// behaviour means checking the other still lines up with it.
+/// A file whose name carries an id but whose contents do not parse (a partial
+/// write, an editor artifact) never gets here: `read_entry` fails on it and
+/// `sync_cache` skips it, leaving it for a person to look at.
 fn increment_until_free(
     conn: &Connection,
     mut entry: crate::entry::Entry,
@@ -662,14 +612,32 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
     Ok(())
 }
 
-/// Convert an in-memory [`Entry`] to a [`sapphire_workspace::Document`] for indexing.
-fn entry_to_document(entry: &crate::entry::Entry) -> sapphire_workspace::Document {
-    sapphire_workspace::Document {
-        id: u64::from(entry.frontmatter.id) as i64,
-        body: entry.body.clone(),
-        path: entry.path.to_string_lossy().into_owned(),
-        chunks: None,
-    }
+// ── change-detection snapshot (`files`) ──────────────────────────────────────
+
+fn stored_stamps(conn: &Connection) -> Result<HashMap<String, FileStamp>> {
+    let mut stmt = conn.prepare("SELECT path, mtime_ns, len FROM files")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                FileStamp { mtime_ns: row.get(1)?, len: row.get::<_, i64>(2)? as u64 },
+            ))
+        })?
+        .collect::<rusqlite::Result<HashMap<_, _>>>()?;
+    Ok(rows)
+}
+
+fn upsert_stamp(conn: &Connection, path: &str, stamp: FileStamp) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO files (path, mtime_ns, len) VALUES (?1, ?2, ?3)",
+        params![path, stamp.mtime_ns, stamp.len as i64],
+    )?;
+    Ok(())
+}
+
+fn remove_stamp(conn: &Connection, path: &str) -> Result<()> {
+    conn.execute("DELETE FROM files WHERE path = ?1", [path])?;
+    Ok(())
 }
 
 #[cfg(test)]
