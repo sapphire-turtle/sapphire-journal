@@ -21,8 +21,7 @@ repos across this family consistent.
   (`cli/`, `desktop/`, `server/`) directly under the repo root.
 - **Library crates** live under `crates/`, in a directory named after the
   full crate name (e.g. `crates/sapphire-journal-core/`).
-- Non-crate directories (the `sapphire-journal-vscode/` extension, `docs/`)
-  stay at the repo root.
+- Non-crate directories (`docs/`) stay at the repo root.
 
 ---
 
@@ -46,5 +45,4 @@ repos across this family consistent.
   ディレクトリをリポジトリ直下に置きます。
 - **ライブラリ用クレート**は `crates/` 直下に、正式なクレート名の
   ディレクトリで置きます（例: `crates/sapphire-journal-core/`）。
-- クレートではないディレクトリ（`sapphire-journal-vscode/` 拡張機能や
-  `docs/`）はリポジトリ直下のままにします。
+- クレートではないディレクトリ（`docs/`）はリポジトリ直下のままにします。
