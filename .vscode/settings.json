@@ -1,9 +1,0 @@
-{
-  "files.exclude": {
-    "sapphire-journal-vscode/out": false
-  },
-  "search.exclude": {
-    "sapphire-journal-vscode/out": true
-  },
-  "typescript.tsc.autoDetect": "off"
-}
