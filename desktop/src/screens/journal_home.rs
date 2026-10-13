@@ -4,65 +4,26 @@ use std::path::PathBuf;
 use chrono::{Duration, NaiveDate};
 use eframe::egui;
 use grain_id::GrainId;
-use uuid::Uuid;
 
 use sapphire_journal_core::{
-    JournalState,
-    entry::EntryHeader,
-    entry_ref::EntryRef,
-    journal::Journal,
+    entry::{Entry, EntryHeader},
     ops::{
-        EntryFields, EntryFilter, EntryTreeNode, FieldSelector, SortField as CoreSortField,
-        SortOrder as CoreSortOrder, UpdateOption, build_entry_tree, fix_entry, prepare_new_entry,
-        remove_entry, update_entry,
+        EntryFilter, EntryTreeNode, FieldSelector, SortField as CoreSortField,
+        SortOrder as CoreSortOrder, build_entry_tree,
     },
-    parser::{read_entry, write_entry},
     period::{Period, parse_period},
 };
 
-use crate::app::{App, AppState, EditorState, HomeState, ViewMode};
+use crate::app::{App, EditorState, HomeState, Tab, ViewMode};
 use crate::icons;
 use crate::widgets::date_picker::date_picker_button;
 use crate::widgets::month_grid::{
     self, MonthGrid, Selection, format_period_range, month_bounds, week_bounds,
 };
 
-pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
-    // ── Ensure HomeState matches the requested journal ────────────────────
-    let needs_init = app.home.as_ref().map(|h| h.journal_id) != Some(journal_id);
-    if needs_init {
-        match app.registry.journals.iter().find(|e| e.id == journal_id).cloned() {
-            Some(entry) => {
-                app.home = Some(HomeState::new(entry, &app.settings));
-                app.remember_last_opened(Some(journal_id));
-            }
-            None => {
-                app.home = None;
-                *app.journal_state.lock().unwrap() = None;
-                show_journal_missing(app, ui);
-                return;
-            }
-        }
-    }
-
-    // ── Ensure JournalState is open for the current journal ───────────────
-    // Idempotent — bails out immediately when state.journal.root already
-    // matches.  Called unconditionally so the startup auto-open path (which
-    // builds HomeState in `App::new` but never enters the `if needs_init`
-    // branch here) still gets its state initialised, which is what the
-    // periodic-sync task needs to see in order to do anything.
-    let root_opt = app.home.as_ref().map(|h| h.journal_root.clone());
-    if let Some(root) = root_opt {
-        ensure_journal_state(app, &root);
-    }
-
-    // ── Reload entries from disk if dirty ────────────────────────────────
-    if let Some(home) = app.home.as_mut() {
-        if home.needs_reload {
-            reload_entries(home);
-        }
-    }
-
+/// The journal tab: everything it shows comes from the running server's
+/// `sapphire-journal.*` methods, so it is the journal the server serves.
+pub fn show(app: &mut App, ui: &mut egui::Ui) {
     // ── Layout: top header + left sidebar + central editor ───────────────
     let mut toggle_right_sidebar = false;
     egui::Panel::top("home_header")
@@ -70,8 +31,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
         .show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                draw_journal_switcher(app, ui, journal_id);
-                if let Some(home) = &app.home {
+                draw_journal_menu(app, ui);
+                {
+                    let home = &app.home;
                     if home.sync_in_progress {
                         ui.add(egui::Spinner::new().size(14.0));
                         ui.small("Refreshing…");
@@ -90,7 +52,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
                         if icon_toggle_btn(ui, icons::panel_right(), active, tooltip).clicked() {
                             toggle_right_sidebar = true;
                         }
-                        ui.small(home.journal_root.display().to_string());
+                        if let Some(root) = &home.journal_root {
+                            ui.small(root.display().to_string());
+                        }
                     });
                 }
             });
@@ -98,17 +62,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
         });
 
     if toggle_right_sidebar {
-        if let Some(home) = app.home.as_mut() {
-            home.show_right_sidebar = !home.show_right_sidebar;
-            app.settings.right_sidebar.visible = home.show_right_sidebar;
-            if let Err(e) = app.settings.save() {
-                home.error_msg = Some(format!("Failed to save settings: {e}"));
-            }
+        let home = &mut app.home;
+        home.show_right_sidebar = !home.show_right_sidebar;
+        app.settings.right_sidebar.visible = home.show_right_sidebar;
+        if let Err(e) = app.settings.save() {
+            home.error_msg = Some(format!("Failed to save settings: {e}"));
         }
-    }
-
-    if app.home.is_none() {
-        return;
     }
 
     egui::Panel::left("entry_sidebar")
@@ -121,27 +80,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
 
     // Decide whether the right sidebar fits as a panel or needs to overlay.
     // Threshold mirrors keeping left(280) + center(340) + right(280) usable.
-    let show_right = app
-        .home
-        .as_ref()
-        .is_some_and(|h| h.show_right_sidebar);
+    let show_right = app.home.show_right_sidebar;
     let overlay = ui.available_width() < 900.0;
-    let tab_before = app.home.as_ref().map(|h| h.right_sidebar_tab);
+    let tab_before = app.home.right_sidebar_tab;
 
     if show_right && !overlay {
-        let initial_width = app
-            .home
-            .as_ref()
-            .map(|h| h.right_sidebar_width)
-            .unwrap_or(280.0);
+        let initial_width = app.home.right_sidebar_width;
         egui::Panel::right("metadata_sidebar")
             .resizable(true)
             .default_size(initial_width)
             .size_range(220.0..=480.0)
             .show(ui, |ui| {
-                if let Some(home) = app.home.as_mut() {
-                    crate::screens::right_sidebar::draw(home, ui);
-                }
+                crate::screens::right_sidebar::draw(&mut app.home, ui);
             });
     }
 
@@ -159,31 +109,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
     });
 
     if show_right && overlay {
-        if let Some(home) = app.home.as_mut() {
-            crate::screens::right_sidebar::draw_overlay(ui.ctx(), home, overlay_top);
-        }
+        crate::screens::right_sidebar::draw_overlay(ui.ctx(), &mut app.home, overlay_top);
     }
 
     if show_right {
-        let tab_after = app.home.as_ref().map(|h| h.right_sidebar_tab);
+        let tab_after = app.home.right_sidebar_tab;
         if tab_before != tab_after {
-            if let Some(tab) = tab_after {
-                app.settings.right_sidebar.active_tab = tab;
-                if let Err(e) = app.settings.save() {
-                    if let Some(home) = app.home.as_mut() {
-                        home.error_msg = Some(format!("Failed to save settings: {e}"));
-                    }
-                }
+            app.settings.right_sidebar.active_tab = tab_after;
+            if let Err(e) = app.settings.save() {
+                app.home.error_msg = Some(format!("Failed to save settings: {e}"));
             }
         }
     }
 
     // Confirm-delete-entry inline dialog
-    if app
-        .home
-        .as_ref()
-        .is_some_and(|h| h.confirm_delete_entry)
-    {
+    if app.home.confirm_delete_entry {
         let ctx = ui.ctx().clone();
         draw_confirm_delete_entry(app, &ctx);
     }
@@ -195,60 +135,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, journal_id: Uuid) {
     }
 }
 
-// ── Helpers: missing journal ────────────────────────────────────────────────
-
-fn show_journal_missing(app: &mut App, ui: &mut egui::Ui) {
-    egui::Panel::top("home_header_missing")
-        .resizable(false)
-        .show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                if ui.button("← Back").clicked() {
-                    app.screen = AppState::List;
-                }
-            });
-            ui.add_space(4.0);
-        });
-    egui::CentralPanel::default().show(ui, |ui| {
-        ui.vertical_centered(|ui| {
-            ui.add_space(40.0);
-            ui.heading("Journal not found");
-        });
-    });
-}
-
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
-    let home = match app.home.as_mut() {
-        Some(h) => h,
-        None => return,
-    };
+    let home = &mut app.home;
 
     // Toolbar: New Entry + Refresh + view mode toggle
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         if icon_text_btn(ui, icons::plus(), "New Entry").clicked() {
-            match Journal::from_root(home.journal_root.clone()) {
-                Ok(journal) => match prepare_new_entry(&journal, None) {
-                    Ok(path) => {
-                        home.selected_path = Some(path.clone());
-                        home.editor = match load_editor(&path) {
-                            Ok(e) => Some(e),
-                            Err(msg) => {
-                                home.error_msg = Some(msg);
-                                None
-                            }
-                        };
-                        home.needs_reload = true;
-                    }
-                    Err(e) => home.error_msg = Some(e.to_string()),
-                },
-                Err(e) => home.error_msg = Some(e.to_string()),
-            }
+            home.api.prepare(None);
         }
         if icon_btn(ui, icons::refresh(), "Refresh entry list").clicked() {
-            home.needs_reload = true;
+            home.reload();
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Show the icon for the *other* mode (i.e. what clicking would switch to).
@@ -326,6 +225,7 @@ fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
     // Entry list
     if let Some(msg) = &home.entries_error {
         ui.colored_label(egui::Color32::LIGHT_RED, msg);
+        ui.weak("Pick or create a journal in the Sync tab, and make sure the sapphire-journal server is running.");
     }
 
     let filtered = filter_and_sort(home);
@@ -371,50 +271,16 @@ fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
             }
             if let Some(path) = want_select {
                 if home.selected_path.as_ref() != Some(&path) {
-                    home.selected_path = Some(path.clone());
-                    home.editor = match load_editor(&path) {
-                        Ok(e) => Some(e),
-                        Err(msg) => {
-                            home.error_msg = Some(msg);
-                            None
-                        }
-                    };
-                    home.info_msg = None;
+                    home.select(path);
                 }
             }
         });
 
     match entry_action {
-        Some(EntryAction::AddChild(parent_id)) => {
-            match Journal::from_root(home.journal_root.clone()) {
-                Ok(journal) => match prepare_new_entry(&journal, Some(parent_id)) {
-                    Ok(path) => {
-                        home.selected_path = Some(path.clone());
-                        home.editor = match load_editor(&path) {
-                            Ok(e) => Some(e),
-                            Err(msg) => {
-                                home.error_msg = Some(msg);
-                                None
-                            }
-                        };
-                        home.needs_reload = true;
-                    }
-                    Err(e) => home.error_msg = Some(e.to_string()),
-                },
-                Err(e) => home.error_msg = Some(e.to_string()),
-            }
-        }
+        Some(EntryAction::AddChild(parent_id)) => home.api.prepare(Some(parent_id)),
         Some(EntryAction::RequestDelete(path)) => {
             if home.selected_path.as_ref() != Some(&path) {
-                home.editor = match load_editor(&path) {
-                    Ok(e) => Some(e),
-                    Err(msg) => {
-                        home.error_msg = Some(msg);
-                        None
-                    }
-                };
-                home.selected_path = Some(path);
-                home.info_msg = None;
+                home.select(path);
             }
             home.confirm_delete_entry = true;
         }
@@ -422,7 +288,7 @@ fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
     }
 
     if let Some((source_path, new_parent)) = reparent_action {
-        apply_reparent(app, source_path, new_parent);
+        home.api.reparent(source_path, new_parent);
     }
 }
 
@@ -647,61 +513,6 @@ fn draw_root_drop_zone(
     }
 }
 
-/// Apply a drag-and-drop reparenting action: rewrite the source entry's
-/// `parent_id` via [`update_entry`], update any path rename, and notify the
-/// sync backend.  Runs outside the `home` borrow so it can take `&mut App`.
-fn apply_reparent(app: &mut App, source_path: PathBuf, new_parent: Option<GrainId>) {
-    let conn_result = {
-        let guard = app.journal_state.lock().unwrap();
-        guard.as_ref().map(|s| s.open_conn())
-    };
-    let conn = match conn_result {
-        Some(Ok(c)) => c,
-        Some(Err(e)) => {
-            if let Some(home) = app.home.as_mut() {
-                home.error_msg = Some(format!("Failed to open cache: {e}"));
-            }
-            return;
-        }
-        None => {
-            if let Some(home) = app.home.as_mut() {
-                home.error_msg = Some("No journal is open".to_string());
-            }
-            return;
-        }
-    };
-
-    let parent_field = match new_parent {
-        Some(id) => UpdateOption::Set(EntryRef::Id(id)),
-        None => UpdateOption::Clear,
-    };
-    let fields = EntryFields {
-        parent: parent_field,
-        ..Default::default()
-    };
-
-    let renamed = match update_entry(&source_path, &conn, fields) {
-        Ok(maybe_new) => maybe_new,
-        Err(e) => {
-            if let Some(home) = app.home.as_mut() {
-                home.error_msg = Some(format!("Reparent failed: {e}"));
-            }
-            return;
-        }
-    };
-    drop(conn);
-
-    let final_path = renamed.clone().unwrap_or_else(|| source_path.clone());
-    // Track selection if it moved with the rename.
-    if let Some(home) = app.home.as_mut() {
-        if home.selected_path.as_deref() == Some(source_path.as_path()) {
-            home.selected_path = Some(final_path.clone());
-        }
-        home.needs_reload = true;
-        home.info_msg = Some("Reparented.".to_string());
-    }
-}
-
 fn draw_entry_row(
     ui: &mut egui::Ui,
     header: &EntryHeader,
@@ -774,10 +585,7 @@ fn draw_entry_row(
 /// Renders the calendar above the editor.  Day / week / month clicks set
 /// `home.period` to a value `parse_period` understands.
 fn draw_home_calendar(app: &mut App, ui: &mut egui::Ui) {
-    let home = match app.home.as_mut() {
-        Some(h) => h,
-        None => return,
-    };
+    let home = &mut app.home;
 
     ui.add_space(2.0);
     ui.horizontal(|ui| {
@@ -900,31 +708,26 @@ fn period_summary(period: &str) -> String {
 // ── Editor panel ─────────────────────────────────────────────────────────────
 
 fn draw_editor_panel(app: &mut App, ui: &mut egui::Ui) {
-    let do_save = {
-        let home = match app.home.as_mut() {
-            Some(h) => h,
-            None => return,
-        };
-
-        if home.editor.is_none() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
+    let home = &mut app.home;
+    if home.editor.is_none() {
+        ui.vertical_centered(|ui| {
+            ui.add_space(40.0);
+            if home.selected_path.is_some() {
+                ui.spinner();
+            } else {
                 ui.heading("No entry selected");
                 ui.label("Pick an entry from the sidebar, or create a new one.");
-            });
-            return;
-        }
-
-        draw_editor_panel_inner(home, ui)
-    };
-    if do_save {
-        save_current_entry(app);
+            }
+        });
+        return;
+    }
+    if draw_editor_panel_inner(home, ui) {
+        save_current_entry(home);
     }
 }
 
 /// Renders the editor body using an exclusive `&mut HomeState`.  Returns
-/// `true` when the Save button was clicked so the caller can apply the
-/// disk write outside the home borrow.
+/// `true` when the Save button was clicked.
 fn draw_editor_panel_inner(home: &mut HomeState, ui: &mut egui::Ui) -> bool {
     let mut do_save = false;
 
@@ -1087,58 +890,19 @@ fn draw_confirm_delete_entry(app: &mut App, ctx: &egui::Context) {
         cancel = true;
     }
 
-    {
-        let home = match app.home.as_mut() {
-            Some(h) => h,
-            None => return,
-        };
-
-        if cancel {
-            home.confirm_delete_entry = false;
-        }
-        if confirm {
-            home.confirm_delete_entry = false;
-            if let Some(path) = home.selected_path.clone() {
-                match remove_entry(&path) {
-                    Ok(()) => {
-                        home.selected_path = None;
-                        home.editor = None;
-                        home.info_msg = None;
-                        home.needs_reload = true;
-                    }
-                    Err(e) => home.error_msg = Some(e.to_string()),
-                }
-            }
+    let home = &mut app.home;
+    if cancel {
+        home.confirm_delete_entry = false;
+    }
+    if confirm {
+        home.confirm_delete_entry = false;
+        if let Some(path) = home.selected_path.clone() {
+            home.api.remove(path);
         }
     }
 }
 
-// ── Disk operations ──────────────────────────────────────────────────────────
-
-fn reload_entries(home: &mut HomeState) {
-    home.needs_reload = false;
-    home.entries_error = None;
-    let journal = match Journal::from_root(home.journal_root.clone()) {
-        Ok(j) => j,
-        Err(e) => {
-            home.entries_error = Some(e.to_string());
-            home.entries.clear();
-            return;
-        }
-    };
-    let paths = match journal.collect_entries() {
-        Ok(p) => p,
-        Err(e) => {
-            home.entries_error = Some(e.to_string());
-            home.entries.clear();
-            return;
-        }
-    };
-    home.entries = paths
-        .iter()
-        .filter_map(|p| read_entry(p).ok().map(EntryHeader::from))
-        .collect();
-}
+// ── Sidebar filtering ────────────────────────────────────────────────────────
 
 fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     let mut headers = home.entries.clone();
@@ -1209,10 +973,12 @@ fn cmp_opt<T: Ord>(a: Option<T>, b: Option<T>) -> std::cmp::Ordering {
     }
 }
 
-fn load_editor(path: &std::path::Path) -> Result<EditorState, String> {
-    let entry = read_entry(path).map_err(|e| e.to_string())?;
+// ── Editor ↔ entry ───────────────────────────────────────────────────────────
+
+/// The editor's form for an entry the server returned.
+pub fn editor_for(entry: Entry) -> EditorState {
     let fm = &entry.frontmatter;
-    Ok(EditorState {
+    EditorState {
         id: fm.id.to_string(),
         title: fm.title.clone(),
         tags: fm.tags.join(", "),
@@ -1240,33 +1006,26 @@ fn load_editor(path: &std::path::Path) -> Result<EditorState, String> {
             .as_ref()
             .map(|e| e.end.format("%Y-%m-%d").to_string())
             .unwrap_or_default(),
-    })
+        base: entry,
+    }
 }
 
-fn save_current_entry(app: &mut App) {
-    {
-        let home = match app.home.as_mut() {
-            Some(h) => h,
-            None => return,
-        };
-        let Some(path) = home.selected_path.clone() else {
-            return;
-        };
-        let Some(editor) = home.editor.as_ref() else {
-            return;
-        };
-
-        home.error_msg = None;
-        home.info_msg = None;
-
-    let mut entry = match read_entry(&path) {
-        Ok(e) => e,
-        Err(e) => {
-            home.error_msg = Some(format!("read failed: {e}"));
-            return;
-        }
+/// Write the form over the entry it was loaded from and send it to the
+/// server, which saves it, normalizes it and answers with its path.
+fn save_current_entry(home: &mut HomeState) {
+    let Some(editor) = home.editor.as_ref() else {
+        return;
     };
+    home.error_msg = None;
+    home.info_msg = None;
+    match entry_from_editor(editor) {
+        Ok(entry) => home.api.save(entry),
+        Err(msg) => home.error_msg = Some(msg),
+    }
+}
 
+fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
+    let mut entry = editor.base.clone();
     entry.frontmatter.title = editor.title.clone();
     entry.frontmatter.tags = editor
         .tags
@@ -1280,13 +1039,10 @@ fn save_current_entry(app: &mut App) {
         let due = if editor.task_due.trim().is_empty() {
             None
         } else {
-            match sapphire_journal_core::period::parse_datetime_end(editor.task_due.trim()) {
-                Ok(d) => Some(d),
-                Err(e) => {
-                    home.error_msg = Some(format!("task.due: {e}"));
-                    return;
-                }
-            }
+            Some(
+                sapphire_journal_core::period::parse_datetime_end(editor.task_due.trim())
+                    .map_err(|e| format!("task.due: {e}"))?,
+            )
         };
         let status = if editor.task_status.is_empty() {
             "open".to_string()
@@ -1307,8 +1063,7 @@ fn save_current_entry(app: &mut App) {
 
     if editor.has_event {
         if editor.event_start.trim().is_empty() && editor.event_end.trim().is_empty() {
-            home.error_msg = Some("event requires a start or end date".to_string());
-            return;
+            return Err("event requires a start or end date".to_string());
         }
         let start_str = if editor.event_start.trim().is_empty() {
             editor.event_end.trim()
@@ -1320,20 +1075,10 @@ fn save_current_entry(app: &mut App) {
         } else {
             editor.event_end.trim()
         };
-        let start = match sapphire_journal_core::period::parse_datetime(start_str) {
-            Ok(d) => d,
-            Err(e) => {
-                home.error_msg = Some(format!("event.start: {e}"));
-                return;
-            }
-        };
-        let end = match sapphire_journal_core::period::parse_datetime_end(end_str) {
-            Ok(d) => d,
-            Err(e) => {
-                home.error_msg = Some(format!("event.end: {e}"));
-                return;
-            }
-        };
+        let start = sapphire_journal_core::period::parse_datetime(start_str)
+            .map_err(|e| format!("event.start: {e}"))?;
+        let end = sapphire_journal_core::period::parse_datetime_end(end_str)
+            .map_err(|e| format!("event.end: {e}"))?;
         let prev = entry.frontmatter.event.take();
         entry.frontmatter.event = Some(sapphire_journal_core::entry::EventMeta {
             start,
@@ -1343,106 +1088,30 @@ fn save_current_entry(app: &mut App) {
     } else {
         entry.frontmatter.event = None;
     }
-
-    if let Err(e) = write_entry(&mut entry) {
-        home.error_msg = Some(format!("write failed: {e}"));
-        return;
-    }
-
-        match fix_entry(&entry.path) {
-            Ok(maybe_new) => {
-                let final_path = maybe_new.unwrap_or(entry.path.clone());
-                home.selected_path = Some(final_path.clone());
-                home.editor = match load_editor(&final_path) {
-                    Ok(e) => Some(e),
-                    Err(msg) => {
-                        home.error_msg = Some(msg);
-                        None
-                    }
-                };
-                home.info_msg = Some("Saved.".to_string());
-                home.needs_reload = true;
-            }
-            Err(e) => home.error_msg = Some(format!("fix failed: {e}")),
-        }
-    }
+    Ok(entry)
 }
 
-// ── Journal-state lifecycle ────────────────────────────────────────────────
+// ── Journal menu ────────────────────────────────────────────────────────────
 
-/// Open the journal's [`JournalState`] (entry cache) and stash it
-/// in `app.journal_state` so the periodic re-index task can use it.
-/// Idempotent: re-opening for the same `journal_root` is a no-op.
-///
-/// On a successful transition (None → Some, or different journal → this one)
-/// kicks off an initial re-index so the user gets fresh state immediately
-/// rather than waiting up to `sync_interval_minutes` for the first tick.
-fn ensure_journal_state(app: &mut App, journal_root: &std::path::Path) {
-    let already_open = {
-        let guard = app.journal_state.lock().unwrap();
-        guard
-            .as_ref()
-            .map(|s| s.journal.root.as_path() == journal_root)
-            .unwrap_or(false)
-    };
-    if already_open {
-        return;
-    }
-    let result = Journal::from_root(journal_root.to_path_buf())
-        .map_err(|e| e.to_string())
-        .and_then(|j| JournalState::open(j).map_err(|e| e.to_string()));
-    match result {
-        Ok(state) => {
-            *app.journal_state.lock().unwrap() = Some(state);
-            trigger_manual_sync(app);
-        }
-        Err(msg) => {
-            *app.journal_state.lock().unwrap() = None;
-            if let Some(home) = app.home.as_mut() {
-                home.error_msg = Some(format!("Failed to open journal state: {msg}"));
-            }
-        }
-    }
-}
-
-// ── Journal switcher ────────────────────────────────────────────────────────
-
-/// Top-left "current journal" dropdown.  Shows other registered journals as
-/// clickable switch targets and a "Manage Journals…" entry that drops back to
-/// the list screen for create / clone / delete actions.
-fn draw_journal_switcher(app: &mut App, ui: &mut egui::Ui, current_id: Uuid) {
-    let current_name = app
+/// Top-left journal menu: refresh and settings. Which journal is served is
+/// chosen in the Sync tab.
+fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
+    let name = app
         .home
+        .journal_root
         .as_ref()
-        .map(|h| h.journal_name.clone())
+        .and_then(|root| root.file_name())
+        .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Journal".to_string());
-    let others: Vec<(Uuid, String)> = app
-        .registry
-        .journals
-        .iter()
-        .filter(|e| e.id != current_id)
-        .map(|e| (e.id, e.name.clone()))
-        .collect();
 
-    let mut switch_to: Option<Uuid> = None;
-    let mut go_manage = false;
     let mut refresh_now = false;
     let mut open_settings = false;
+    let mut choose_journal = false;
 
     let caret = egui::Image::new(icons::chevron_down())
         .fit_to_exact_size(egui::vec2(14.0, 14.0))
         .tint(ui.visuals().text_color());
-    let response = ui.menu_button((current_name, caret), |ui| {
-        if !others.is_empty() {
-            ui.label("Other journals");
-            for (id, name) in &others {
-                if ui.button(name).clicked() {
-                    switch_to = Some(*id);
-                    ui.close();
-                }
-            }
-            ui.separator();
-        }
+    ui.menu_button((name, caret), |ui| {
         if ui.button("Refresh").clicked() {
             refresh_now = true;
             ui.close();
@@ -1451,80 +1120,28 @@ fn draw_journal_switcher(app: &mut App, ui: &mut egui::Ui, current_id: Uuid) {
             open_settings = true;
             ui.close();
         }
-        if ui.button("Manage Journals…").clicked() {
-            go_manage = true;
+        if ui.button("Choose Journal…").clicked() {
+            choose_journal = true;
             ui.close();
         }
     });
-    response.response.on_hover_text("Switch journal");
 
-    if let Some(id) = switch_to {
-        app.home = None;
-        *app.journal_state.lock().unwrap() = None;
-        app.remember_last_opened(Some(id));
-        app.screen = AppState::Home { journal_id: id };
-    } else if go_manage {
-        app.previous_journal_id = Some(current_id);
-        app.screen = AppState::List;
-    } else if refresh_now {
-        trigger_manual_sync(app);
-    } else if open_settings {
-        if let Some(home) = app.home.as_ref() {
-            let root = home.journal_root.clone();
-            app.settings_panel = Some(
-                crate::screens::settings_panel::SettingsPanelState::open(root),
-            );
-        }
-    }
-}
-
-/// Time budget for a single manual re-index. After this elapses we report a
-/// timeout error to the UI; the worker thread keeps running and will
-/// eventually release the `journal_state` mutex when it finally completes.
-const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
-
-/// Run a cache re-index once, off-thread, and report success/failure via
-/// `AppEvent`.  Lets the user refresh independently of the 10-minute
-/// periodic tick.
-fn trigger_manual_sync(app: &mut App) {
-    // Guard against duplicate clicks: a previous Refresh may still be
-    // blocked on the journal_state mutex. Without this, every additional
-    // click leaks another tokio task that also waits forever on the same
-    // mutex.
-    if let Some(home) = app.home.as_mut() {
+    if refresh_now {
+        let home = &mut app.home;
+        // A previous refresh may still be out; don't stack another.
         if home.sync_in_progress {
             home.error_msg = Some("Refresh already in progress".to_string());
-            return;
+        } else {
+            home.sync_in_progress = true;
+            home.error_msg = None;
+            home.api.refresh();
         }
-        home.sync_in_progress = true;
-        home.error_msg = None;
+    } else if open_settings {
+        app.settings_panel = Some(crate::screens::settings_panel::SettingsPanelState::open());
+        app.api.settings();
+    } else if choose_journal {
+        app.tab = Tab::Sync;
     }
-
-    let state_arc = std::sync::Arc::clone(&app.journal_state);
-    let tx = app.event_tx.clone();
-    app.runtime.spawn(async move {
-        let handle = tokio::task::spawn_blocking(move || {
-            let guard = state_arc.lock().unwrap();
-            let Some(state) = guard.as_ref() else {
-                return Err("no journal is open".to_string());
-            };
-            state.sync().map_err(|e| format!("re-index: {e}"))?;
-            Ok::<(), String>(())
-        });
-
-        let outcome = match tokio::time::timeout(MANUAL_SYNC_TIMEOUT, handle).await {
-            Ok(Ok(inner)) => inner,
-            Ok(Err(join_err)) => Err(format!("Refresh task panicked: {join_err}")),
-            Err(_elapsed) => Err(format!(
-                "Refresh timed out after {}s.",
-                MANUAL_SYNC_TIMEOUT.as_secs()
-            )),
-        };
-
-        let _ = tx.send(crate::app::AppEvent::SyncFinished(
-            outcome.map_err(|msg| format!("Refresh failed: {msg}")),
-        ));
-    });
 }
 
 // ── Display helpers ─────────────────────────────────────────────────────────
