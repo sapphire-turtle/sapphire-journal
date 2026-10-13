@@ -49,34 +49,21 @@ cargo uninstall sapphire-journal-cli
 
 ## CLI usage
 
-### Initialize a journal
+### Run the server and choose its journal
 
 ```bash
-sapphire-journal init [PATH]
-```
-
-Creates `.sapphire-journal/config.toml` with the detected local timezone and `.sapphire-journal/.gitignore`.
-
-### Choose the journal to serve
-
-```bash
-sapphire-journal workspace select /path/to/journal
 sapphire-journal service install    # run the server as an OS service
 # or: sapphire-journal serve        # run it in this terminal
 sapphire-journal status
+
+sapphire-journal workspace init /path/to/journal     # make an existing directory a journal and serve it
+sapphire-journal workspace select /path/to/journal   # serve a journal that already exists
 ```
 
-The server serves one journal at a time. The journal commands below work on that
-journal, whether or not the server is running — except `entry search`, which asks the
-running server. They do not search upward from the current directory.
-
-### Global options
-
-```bash
-# Work on another journal than the one the server serves
-# (also settable via SAPPHIRE_JOURNAL_DIR env var)
-sapphire-journal --journal-dir /path/to/journal <command>
-```
+The server is the only process that reads and writes the journal and its cache, and it
+serves one journal at a time. Every command below asks the running server and works on
+the journal it serves; with no server running, they report that and exit 1. They do not
+look at the current directory.
 
 ### Entry commands
 
