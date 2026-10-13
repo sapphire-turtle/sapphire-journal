@@ -22,7 +22,7 @@ indexmap = { version = "2", features = ["serde"] }
 # The MCP macros name `rmcp` directly, so it is the version sapphire-framework
 # builds on (`sapphire_framework::mcp::rmcp`): 1.8 in sapphire-framework 0.17,
 # below the 3.2 this repo had moved to; follow the framework when it moves.
-rmcp = { version = "1.8", default-features = false, features = ["server", "macros"] }
+rmcp = { version = "3.5", default-features = false, features = ["server", "macros"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
 schemars = "1.0"
 # The facade: `server` is the app server (AppServer, FrameworkCommand,
