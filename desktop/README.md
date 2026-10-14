@@ -2,7 +2,7 @@
 
 Cross-platform desktop GUI for [sapphire-journal](https://github.com/fluo10/sapphire-journal) — a Markdown-based task and note manager. Built with [egui](https://github.com/emilk/egui) / eframe.
 
-The desktop app is the primary human-facing UI: it manages a registry of journals stored under your user data directory, embeds an HTTP MCP server for AI-agent integrations, and provides an editor, tree view, and settings panel for working with entries.
+The desktop app is the primary human-facing UI: an editor, tree view, calendar and settings panel for working with entries. It is a client of the `sapphire-journal` server, which it reaches over IPC and never starts itself: the **Journal** tab shows the journal the server serves, and the **Sync** tab (sapphire-framework's sync panel) chooses that journal — open a folder, create one, or bring one from the workgroup — and manages sync. Run the server with `sapphire-journal service install` (or `sapphire-journal serve`).
 
 ## Installation
 
@@ -47,25 +47,15 @@ rm ~/.local/bin/sapphire-journal-desktop
 Remove-Item "$HOME\.local\bin\sapphire-journal-desktop.exe"
 ```
 
-The app keeps the journal registry and managed journal repositories under `$XDG_DATA_HOME/sapphire-journal/` (defaults to `~/.local/share/sapphire-journal/` on Linux / macOS). This contains `journals.toml` (the registry), `settings.toml`, and `journals/<uuid>/` (the actual entry files for each managed journal). **Deleting it removes your data.** Back up or git-push first if you want to keep anything.
+The app's own preferences live in `settings.toml` under the app's data directory (`~/.local/share/sapphire-journal/` on Linux). Journals are wherever you keep them; the server remembers which one it serves.
 
-## Data layout
+### Journals from earlier versions
 
-```
-$XDG_DATA_HOME/sapphire-journal/
-├── journals.toml          # list of registered journals
-├── settings.toml          # UI preferences (last-opened, MCP server, etc.)
-└── journals/
-    └── <uuid>/            # per-journal git repository
-        ├── .sapphire-journal/
-        └── 2026/...
-```
+Earlier versions kept a registry of journals (`journals.toml`) and their files under `~/.local/share/sapphire-journal/journals/<uuid>/`. Those directories are untouched: open one from the **Sync** tab (or `sapphire-journal workspace select <dir>`) to serve it.
 
-Journals registered through the GUI are git repositories on disk — you can `cd` into them and use `git`, sync them with another machine, or open them with the CLI directly.
+## MCP
 
-## MCP server
-
-The desktop app embeds the [`sapphire-journal-mcp`](../crates/sapphire-journal-mcp/) HTTP server. Enable it in **Settings → MCP** to let AI agents (Claude, etc.) read and write the currently open journal over HTTP.
+AI agents reach the journal through the server, not the desktop app: `sapphire-journal mcp` on stdio, or `http://127.0.0.1:3172/mcp` once `[mcp] http = true` is set in the server's `server.toml`.
 
 ## License
 

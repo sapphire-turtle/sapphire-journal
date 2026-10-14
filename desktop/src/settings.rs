@@ -1,24 +1,17 @@
-//! Persisted UI preferences (separate from `journals.toml`).
+//! Persisted UI preferences: the desktop's own, not the journal's.
 //!
-//! Currently only records the last-opened journal so the app can resume
-//! straight into it on next start.  Lives at
-//! `$XDG_DATA_HOME/sapphire-journal/settings.toml`.
+//! Lives at `<data dir>/sapphire-journal/settings.toml`. Which journal is
+//! open is the server's to remember (`workspace select`), not this file's.
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::error::Result;
-use crate::registry::JournalRegistry;
 
 /// On-disk user preferences for the GUI.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
-    /// `id` of the journal that was open when the app last exited.
-    #[serde(default)]
-    pub last_opened_journal_id: Option<Uuid>,
-
     /// Right metadata sidebar (Obsidian-style) preferences.
     #[serde(default)]
     pub right_sidebar: RightSidebarSettings,
@@ -60,9 +53,9 @@ pub enum RightTab {
 }
 
 impl Settings {
-    /// `$XDG_DATA_HOME/sapphire-journal/settings.toml`
+    /// `<data dir>/sapphire-journal/settings.toml`
     pub fn path() -> PathBuf {
-        JournalRegistry::data_dir().join("settings.toml")
+        sapphire_journal_core::JOURNAL_CTX.data_dir().join("settings.toml")
     }
 
     /// Load the settings from disk, returning defaults if the file does not exist.

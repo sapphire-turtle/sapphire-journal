@@ -4,8 +4,6 @@ use std::fmt;
 pub enum AppError {
     Io(std::io::Error),
     Toml(String),
-    Git(git2::Error),
-    Domain(String),
 }
 
 impl fmt::Display for AppError {
@@ -13,8 +11,6 @@ impl fmt::Display for AppError {
         match self {
             AppError::Io(e) => write!(f, "I/O error: {e}"),
             AppError::Toml(e) => write!(f, "Config error: {e}"),
-            AppError::Git(e) => write!(f, "Git error: {e}"),
-            AppError::Domain(e) => write!(f, "{e}"),
         }
     }
 }
@@ -34,12 +30,6 @@ impl From<toml::de::Error> for AppError {
 impl From<toml::ser::Error> for AppError {
     fn from(e: toml::ser::Error) -> Self {
         AppError::Toml(e.to_string())
-    }
-}
-
-impl From<git2::Error> for AppError {
-    fn from(e: git2::Error) -> Self {
-        AppError::Git(e)
     }
 }
 

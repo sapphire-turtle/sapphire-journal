@@ -103,20 +103,21 @@ cargo install sapphire-journal-cli
 See [cli/README.md](cli/README.md) for the full command reference.
 
 A **journal** is any directory tree that contains a `.sapphire-journal/` directory.
-Use `sapphire-journal init` to create one.
+Use `sapphire-journal workspace init <dir>` to make one of an existing directory.
 
 `sapphire-journal` is one binary: the journal's own commands (`entry`, `cache`, …)
 sit beside [sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework)'s
 (`serve`, `status`, `service`, `workspace`, `mcp`, …). Run bare (or as `serve`), it is the
-app server: it serves one journal, indexes it for search, syncs it through the host's
-`sapphire-bridge`, and answers MCP. The journal it serves is chosen with
-`sapphire-journal workspace select <dir>`; the journal commands work on that one unless
-`--journal-dir` names another.
+app server: the one process that reads and writes the journal. It serves one journal,
+indexes it for search, syncs it through the host's `sapphire-bridge`, and answers MCP.
+Every other command — and the desktop app — is a client of it over IPC, working on the
+journal it serves (`sapphire-journal workspace init|select <dir>` chooses it).
 
 ```sh
-sapphire-journal init ~/journal
-sapphire-journal workspace select ~/journal
 sapphire-journal service install        # or run `sapphire-journal serve` in a terminal
+mkdir -p ~/journal
+sapphire-journal workspace init ~/journal
+sapphire-journal entry new --title "Hello"
 ```
 
 AI agents connect with `sapphire-journal mcp` (stdio), or over HTTP at
