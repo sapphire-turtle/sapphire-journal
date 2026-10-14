@@ -5,9 +5,9 @@
 //! (`workspace init|select|show|move|remove|map`), its search index, signals
 //! and the log file. This module adds what is the journal's own:
 //!
-//! - **sync**, through the host's `sapphire-bridge` when one is running. A
-//!   bridge that is not running is not fatal: the server serves its
-//!   workspace without sync, and picks the bridge up on its next start.
+//! - **sync**, through the host's `sapphire-bridge`. A bridge that is not
+//!   running is not fatal: the server serves its workspace without sync and
+//!   picks the bridge up once it starts, or again after it restarts.
 //! - **the journal's methods** (`sapphire-journal.*`), which its MCP tools
 //!   call: the framework serves those tools on stdio (`sapphire-journal mcp`)
 //!   and, when `server.toml` turns it on, at `/mcp` on the server's HTTP
@@ -27,11 +27,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sapphire_bridge_client::BridgeClient;
 use sapphire_framework::backend::WorkspaceBackend as _;
-use sapphire_framework::ipc::{self, ManagedBy};
 use sapphire_framework::server::{
-    AppServer, SERVER_CONFIG_FILE, ServerConfig, StatusRow, SyncRuntime, WorkspaceHost,
+    AppServer, SERVER_CONFIG_FILE, ServerConfig, StatusRow, WorkspaceHost,
 };
 use sapphire_journal_core::{JOURNAL_CTX, JournalState, user_config::UserConfig};
 
@@ -208,25 +206,12 @@ pub async fn run() -> anyhow::Result<()> {
         check_exposure(http_addr, &config.http.allowed_hosts)?;
     }
 
-    let (mut server, journal) = build();
-    match BridgeClient::connect(JOURNAL_CTX.app_name, VERSION).await {
-        Ok(bridge) => {
-            let runtime = SyncRuntime::new(
-                &JOURNAL_CTX,
-                Arc::new(bridge),
-                std::env::current_exe()?,
-                ManagedBy::Service,
-            );
-            server = server.sync(Arc::new(runtime));
-        }
-        // The server is useful without sync (a missing bridge stops sync,
-        // nothing else). Any other failure — a bridge of another version,
-        // say — is a real problem and stops the start.
-        Err(ipc::Error::NotRunning(reason)) => {
-            tracing::warn!("{reason}; serving without sync until this server is restarted");
-        }
-        Err(err) => return Err(err.into()),
-    }
+    // Sync through the host's bridge. The framework connects, and connects
+    // again whenever the bridge restarts; a bridge that is not running yet
+    // stops nothing but sync. Any other failure — a bridge of another
+    // version, say — stops the start, in `run`.
+    let (server, journal) = build();
+    let server = server.sync_via_bridge()?;
 
     let mcp_row = if config.mcp.http {
         format!("http://{http_addr}/mcp")
