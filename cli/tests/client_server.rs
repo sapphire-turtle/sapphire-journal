@@ -91,7 +91,8 @@ async fn clients_read_and_write_the_journal_through_the_server() {
     assert!(!std::path::Path::new(&path).exists(), "the old name is gone");
 
     // A child, so the tree and the list carry `parent_id`.
-    let parent_id = saved.rsplit('/').next().unwrap().split('_').next().unwrap().to_owned();
+    let file_name = std::path::Path::new(&saved).file_name().unwrap().to_str().unwrap();
+    let parent_id = file_name.split('_').next().unwrap().to_owned();
     client
         .call(
             names::ENTRY_PREPARE,
