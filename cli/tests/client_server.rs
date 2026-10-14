@@ -121,7 +121,7 @@ async fn clients_read_and_write_the_journal_through_the_server() {
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].children.len(), 1);
 
-    // Settings: the journal's config keeps the framework's `[workspace]` table.
+    // Settings: written back to the marker's config.toml.
     let settings: JournalSettings = client.read(names::CONFIG_GET, EmptyParams {}).await.expect("config_get");
     assert_eq!(settings.root.canonicalize().unwrap(), journal.canonicalize().unwrap());
     let settings: JournalSettings = client
@@ -138,7 +138,6 @@ async fn clients_read_and_write_the_journal_through_the_server() {
     assert_eq!(settings.duplicate_title, DuplicateTitlePolicy::Allow);
     assert_eq!(settings.sync_interval_minutes, Some(5));
     let config = std::fs::read_to_string(journal.join(".sapphire-journal/config.toml")).unwrap();
-    assert!(config.contains("[workspace"), "the framework's registry survives: {config}");
     assert!(config.contains("duplicate_title = \"allow\""), "{config}");
 
     let cleaned = client.call(names::CACHE_CLEAN, EmptyParams {}).await.expect("cache_clean");

@@ -224,8 +224,9 @@ pub struct JournalConfig {
     #[serde(default)]
     pub journal: JournalSection,
 
-    /// The other tables of the marker's `config.toml`, kept as they are: the
-    /// framework writes its `[workspace]` registry into the same file.
+    /// The other tables of the marker's `config.toml`, kept as they are:
+    /// sapphire-framework before 0.20 wrote its `[workspace]` registry into
+    /// the same file.
     #[serde(flatten)]
     pub extra: IndexMap<String, toml::Value>,
 }
