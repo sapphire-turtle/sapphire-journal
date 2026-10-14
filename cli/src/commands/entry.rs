@@ -1,23 +1,24 @@
 use anyhow::{bail, Context, Result};
 use sapphire_journal_core::{
-    cache,
+    entry::Entry,
     entry_ref::EntryRef,
     labels::EntryFlag,
-    ops::{self, EntryFields as CoreEntryFields, EntryFilter, EntryListItem, EntryTreeNode, MatchFlag, UpdateOption},
+    ops::{EntryListItem, EntryTreeNode, UpdateOption},
     period::{parse_datetime, parse_datetime_end},
-    state as core_state,
     text_input::filter as core_filter,
-    JournalState,
+};
+use sapphire_journal_mcp::methods::{
+    EntryCheckParams, EntryFixParams, EntryGetParams, EntryListParams, EntryModifyParams,
+    EntryNewParams, EntryPrepareParams, EntryRemoveParams, EntryResolveParams, names,
 };
 use sapphire_framework::backend::{IpcBackend, SearchMode, WorkspaceBackend as _};
 use sapphire_framework::ipc::Endpoint;
 
 use chrono::NaiveDateTime;
 use clap::{Args, Subcommand};
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{path::Path, process::Command};
+
+use crate::client::Server;
 
 /// Filter and sort arguments shared by `entry list` and `entry tree`.
 #[derive(Args)]
@@ -99,14 +100,33 @@ pub struct EntryFilterArgs {
     pub include_hidden: bool,
 }
 
-fn build_filter(args: &EntryFilterArgs) -> Result<EntryFilter> {
+/// The server's list parameters for `args`, checked here first so that a
+/// mistyped period fails before anything is sent.
+fn list_params(args: &EntryFilterArgs) -> Result<EntryListParams> {
     if args.period.is_none() && !args.all_periods {
         bail!(
             "PERIOD is required (e.g. `today`, `this_week`, `2026-03-15`), \
              or pass `--all-periods` to show all entries"
         );
     }
-    core_filter::build_filter(core_filter::FilterInputs::from(args)).map_err(Into::into)
+    core_filter::build_filter(core_filter::FilterInputs::from(args))?;
+    let flag = |b: bool| b.then_some(true);
+    Ok(EntryListParams {
+        period: args.period.clone(),
+        active: flag(args.active),
+        task_overdue: flag(args.task_overdue),
+        task_in_progress: flag(args.task_in_progress),
+        task_unstarted: flag(args.task_unstarted),
+        event_span: flag(args.event_span),
+        created_at: flag(args.created_at),
+        updated_at: flag(args.updated_at),
+        task_status: args.task_status.clone(),
+        tags: args.tags.clone(),
+        sort_by: args.sort_by.clone(),
+        sort_order: Some(args.sort_order.clone()),
+        include_stale: flag(args.include_stale),
+        include_hidden: flag(args.include_hidden),
+    })
 }
 
 impl<'a> From<&'a EntryFilterArgs> for core_filter::FilterInputs<'a> {
@@ -251,8 +271,8 @@ pub enum EntryCommand {
 
 /// Frontmatter fields shared between `entry new` and `entry modify` (clap-aware).
 ///
-/// After parsing this is converted into [`sapphire_journal_core::ops::EntryFields`]
-/// and passed to the core operation functions.
+/// After parsing this is converted into the server's `entry_new` /
+/// `entry_modify` parameters.
 #[derive(Args)]
 pub struct EntryFields {
     /// Title of the entry — written into the frontmatter and used to generate the filename slug
@@ -304,83 +324,147 @@ pub struct EntryFields {
     pub hidden: Option<bool>,
 }
 
-impl From<EntryFields> for CoreEntryFields {
-    fn from(f: EntryFields) -> Self {
-        Self {
-            title: f.title,
-            body: f.body,
-            parent: match f.parent.as_deref() {
-                Some(s) => UpdateOption::Set(EntryRef::parse(s)),
-                None => UpdateOption::Unchanged,
+/// The server's spelling of a timestamp the CLI parsed.
+fn datetime(dt: Option<NaiveDateTime>) -> Option<String> {
+    dt.map(|d| d.format("%Y-%m-%dT%H:%M").to_string())
+}
+
+impl EntryFields {
+    fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.body.is_none()
+            && self.parent.is_none()
+            && self.slug.is_none()
+            && self.tags.is_none()
+            && self.task_due.is_none()
+            && self.task_status.is_none()
+            && self.task_started_at.is_none()
+            && self.task_closed_at.is_none()
+            && self.event_start.is_none()
+            && self.event_end.is_none()
+            && self.hidden.is_none()
+    }
+
+    fn into_new_params(self) -> EntryNewParams {
+        EntryNewParams {
+            title: self.title,
+            body: self.body,
+            parent: self.parent.as_deref().map(EntryRef::parse),
+            slug: self.slug,
+            // `--tags` with no value means "no tags", which is the empty list.
+            tags: self.tags.map(|t| t.join(",")),
+            task_due: datetime(self.task_due),
+            task_status: self.task_status,
+            task_started_at: datetime(self.task_started_at),
+            task_closed_at: datetime(self.task_closed_at),
+            event_start: datetime(self.event_start),
+            event_end: datetime(self.event_end),
+            hidden: self.hidden,
+        }
+    }
+
+    fn into_modify_params(self, entry: EntryRef, no_parent: bool) -> EntryModifyParams {
+        EntryModifyParams {
+            entry,
+            title: self.title,
+            body: self.body,
+            parent: match (no_parent, self.parent.as_deref()) {
+                (true, _) => UpdateOption::Clear,
+                (false, Some(parent)) => UpdateOption::Set(EntryRef::parse(parent)),
+                (false, None) => UpdateOption::Unchanged,
             },
-            slug: f.slug,
-            tags: f.tags,
-            task_due: f.task_due,
-            task_status: f.task_status,
-            task_started_at: f.task_started_at,
-            task_closed_at: f.task_closed_at,
-            event_start: f.event_start,
-            event_end: f.event_end,
-            hidden: f.hidden,
+            slug: self.slug,
+            tags: self.tags.map(|t| t.join(",")),
+            task_due: datetime(self.task_due),
+            task_status: self.task_status,
+            task_started_at: datetime(self.task_started_at),
+            task_closed_at: datetime(self.task_closed_at),
+            event_start: datetime(self.event_start),
+            event_end: datetime(self.event_end),
+            hidden: self.hidden,
         }
     }
 }
 
-pub fn run(root: &Path, cmd: EntryCommand) -> Result<()> {
-    // Search is the server's; it never needs the entry cache.
-    if let EntryCommand::Search { query, semantic, limit } = cmd {
-        return search(&query, semantic, limit);
-    }
-    let state = core_state::open_state(root)?;
-
+/// Run an entry command. Everything goes to the running server, which owns the
+/// journal's files and its cache.
+pub fn run(server: &Server, cmd: EntryCommand) -> Result<()> {
     match cmd {
-        EntryCommand::List { filter: filter_args, json, emoji, nerd } => {
-            let filter = build_filter(&filter_args)?;
-            let entries = ops::list_entries(&state, &filter)?;
-            let mode = DisplayMode::from_flags(emoji, nerd);
-            print_entries(&entries, filter.has_any_filter(), json, mode)
+        EntryCommand::List { filter, json, emoji, nerd } => {
+            let params = list_params(&filter)?;
+            if json {
+                println!("{}", server.call(names::ENTRY_LIST, params)?);
+                return Ok(());
+            }
+            let items: Vec<EntryListItem> = server.read(names::ENTRY_LIST, params)?;
+            print_entries(&items, DisplayMode::from_flags(emoji, nerd));
+            Ok(())
         }
-        EntryCommand::Tree { filter: filter_args, json, emoji, nerd } => {
-            let filter = build_filter(&filter_args)?;
-            let entries = ops::list_entries(&state, &filter)?;
-            let has_filter = filter.has_any_filter();
-            let entries = if has_filter {
-                ops::fill_ancestor_entries(entries, &state)?
-            } else {
-                entries
-            };
-            let roots = ops::build_entry_tree(entries);
-            let mode = DisplayMode::from_flags(emoji, nerd);
-            print_tree(&roots, has_filter, json, mode)
+        EntryCommand::Tree { filter, json, emoji, nerd } => {
+            let params = list_params(&filter)?;
+            if json {
+                println!("{}", server.call(names::ENTRY_TREE, params)?);
+                return Ok(());
+            }
+            let roots: Vec<EntryTreeNode> = server.read(names::ENTRY_TREE, params)?;
+            print_tree(&roots, DisplayMode::from_flags(emoji, nerd));
+            Ok(())
         }
-        EntryCommand::Show { entry } => show(&resolve_entry(&state, &entry)?),
-        EntryCommand::New { fields } => new(&state, fields),
+        EntryCommand::Show { entry } => {
+            let entry: Entry =
+                server.read(names::ENTRY_GET, EntryGetParams { entry: EntryRef::parse(&entry) })?;
+            show(&entry);
+            Ok(())
+        }
+        EntryCommand::New { fields } => {
+            println!("{}", server.call(names::ENTRY_NEW, fields.into_new_params())?);
+            Ok(())
+        }
         EntryCommand::Edit { entry, new } => {
             if new {
-                edit_new(&state)
+                edit_new(server)
             } else if let Some(e) = entry {
-                edit(&resolve_entry(&state, &e)?, &state)
+                edit(server, &e)
             } else {
                 bail!("specify an entry or use --new to create one")
             }
         }
         EntryCommand::Modify { entry, fields, no_parent } => {
-            let path = resolve_entry(&state, &entry)?;
-            set(&state, &path, fields, no_parent)
+            if fields.is_empty() && !no_parent {
+                bail!("nothing to update — specify at least one field");
+            }
+            let params = fields.into_modify_params(EntryRef::parse(&entry), no_parent);
+            println!("{}", server.call(names::ENTRY_MODIFY, params)?);
+            Ok(())
         }
-        EntryCommand::Check { entry } => check(&state, &entry),
-        EntryCommand::Fix { entry } => fix(&state, &entry),
+        EntryCommand::Check { entry } => {
+            let params = EntryCheckParams { entry: EntryRef::parse(&entry) };
+            println!("{}", server.call(names::ENTRY_CHECK, params)?);
+            Ok(())
+        }
+        EntryCommand::Fix { entry } => {
+            let params = EntryFixParams { entry: EntryRef::parse(&entry) };
+            println!("{}", server.call(names::ENTRY_FIX, params)?);
+            Ok(())
+        }
         EntryCommand::Path { entry, new, parent } => {
-            entry_path(&state, entry.as_deref(), new, parent.as_deref())
+            let path = if new {
+                let parent = parent.as_deref().map(EntryRef::parse);
+                server.call(names::ENTRY_PREPARE, EntryPrepareParams { parent })?
+            } else {
+                let entry = EntryRef::parse(entry.as_deref().expect("clap requires it without --new"));
+                server.call(names::ENTRY_RESOLVE, EntryResolveParams { entry })?
+            };
+            println!("{path}");
+            Ok(())
         }
-        EntryCommand::Remove { entry } => remove(&state, &entry),
-        EntryCommand::Search { .. } => unreachable!("handled above"),
+        EntryCommand::Remove { entry } => {
+            let params = EntryRemoveParams { entry: EntryRef::parse(&entry) };
+            println!("{}", server.call(names::ENTRY_REMOVE, params)?);
+            Ok(())
+        }
+        EntryCommand::Search { query, semantic, limit } => search(&query, semantic, limit),
     }
-}
-
-fn resolve_entry(state: &JournalState, entry: &str) -> Result<PathBuf> {
-    let conn = state.open_conn()?;
-    ops::resolve_entry(&EntryRef::parse(entry), &conn).map_err(Into::into)
 }
 
 // ── display mode ──────────────────────────────────────────────────────────────
@@ -422,56 +506,25 @@ fn render_slot(flags: &[EntryFlag], mode: DisplayMode) -> String {
 
 // ── list output ───────────────────────────────────────────────────────────────
 
-fn print_entries(
-    entries: &[(sapphire_journal_core::entry::EntryHeader, Vec<MatchFlag>)],
-    has_filter: bool,
-    json: bool,
-    mode: DisplayMode,
-) -> Result<()> {
-    if json {
-        let records: Vec<EntryListItem> = entries
-            .iter()
-            .map(|(entry, match_flags)| EntryListItem {
-                entry: entry.clone(),
-                match_flags: if has_filter { Some(match_flags.clone()) } else { None },
-            })
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&records)?);
-        return Ok(());
-    }
-
-    let rows: Vec<(String, String, String)> = entries
+fn print_entries(items: &[EntryListItem], mode: DisplayMode) {
+    let rows: Vec<(String, String, String)> = items
         .iter()
-        .map(|(entry, _)| {
+        .map(|EntryListItem { entry, .. }| {
             let id = entry.id().to_string();
             let slot = render_slot(&entry.flags, mode);
             (id, slot, entry.title().to_owned())
         })
         .collect();
 
-    if rows.is_empty() {
-        return Ok(());
-    }
-
     let id_w = rows.iter().map(|(id, _, _)| id.len()).max().unwrap_or(7);
     for (id, slot, title) in &rows {
         println!("{slot}  {:<id_w$}  {title}", id);
     }
-    Ok(())
 }
 
 // ── tree output ───────────────────────────────────────────────────────────────
 
-fn print_tree(roots: &[EntryTreeNode], has_filter: bool, json: bool, mode: DisplayMode) -> Result<()> {
-    if json {
-        // When no filter is active, strip match_flags by rebuilding without them.
-        // EntryTreeNode::Serialize already omits match_flags when the vec is empty,
-        // so roots can be serialized directly regardless of has_filter.
-        let _ = has_filter;
-        println!("{}", serde_json::to_string_pretty(roots)?);
-        return Ok(());
-    }
-
+fn print_tree(roots: &[EntryTreeNode], mode: DisplayMode) {
     fn render_node(node: &EntryTreeNode, mode: DisplayMode, prefix: &str, is_last: bool) {
         let connector = if is_last { "└─" } else { "├─" };
         let id = node.entry.id().to_string();
@@ -493,25 +546,17 @@ fn print_tree(roots: &[EntryTreeNode], has_filter: bool, json: bool, mode: Displ
         }
     }
 
-    if roots.is_empty() {
-        return Ok(());
-    }
     let n = roots.len();
     for (i, root) in roots.iter().enumerate() {
         render_node(root, mode, "", i + 1 == n);
     }
-    Ok(())
 }
 
 // ── show ──────────────────────────────────────────────────────────────────────
 
-fn show(path: &Path) -> Result<()> {
-    use sapphire_journal_core::{
-        labels::{entry_flags, STALE_AFTER_DAYS_DEFAULT},
-        parser::read_entry,
-    };
+fn show(entry: &Entry) {
+    use sapphire_journal_core::labels::{entry_flags, STALE_AFTER_DAYS_DEFAULT};
 
-    let entry = read_entry(path)?;
     let fm_view = sapphire_journal_core::entry::FrontmatterView::from(entry.frontmatter.clone());
     let fm = &fm_view;
 
@@ -550,27 +595,41 @@ fn show(path: &Path) -> Result<()> {
     }
     println!();
     print!("{}", entry.body);
-    Ok(())
-}
-
-// ── new ───────────────────────────────────────────────────────────────────────
-
-fn new(state: &JournalState, fields: EntryFields) -> Result<()> {
-    state.sync()?;
-    let dest = ops::create_entry(state, fields.into())?;
-    if let Ok(conn) = state.open_conn() {
-        let _ = cache::upsert_entry_from_path(&conn, &dest);
-    }
-    println!("created: {}", dest.display());
-    Ok(())
 }
 
 // ── edit ──────────────────────────────────────────────────────────────────────
+//
+// The user's editor writes the file itself, like any editor the user points at
+// the journal. The server prepares and resolves the path, and normalizes the
+// entry afterwards (`entry_fix`), which also brings its cache row up to date.
 
-fn edit(path: &Path, state: &JournalState) -> Result<()> {
-    if !path.exists() {
-        bail!("{} does not exist", path.display());
+fn edit(server: &Server, entry: &str) -> Result<()> {
+    let path = server.call(names::ENTRY_RESOLVE, EntryResolveParams { entry: EntryRef::parse(entry) })?;
+    run_editor(Path::new(&path))?;
+    let fixed = server.call(names::ENTRY_FIX, EntryFixParams { entry: EntryRef::Path(path.clone().into()) })?;
+    println!("updated: {path}");
+    if fixed.starts_with("renamed:") {
+        println!("{fixed}");
     }
+    Ok(())
+}
+
+fn edit_new(server: &Server) -> Result<()> {
+    let path = server.call(names::ENTRY_PREPARE, EntryPrepareParams::default())?;
+    let entry = EntryRef::Path(path.clone().into());
+    if let Err(err) = run_editor(Path::new(&path)) {
+        let _ = server.call(names::ENTRY_REMOVE, EntryRemoveParams { entry });
+        return Err(err);
+    }
+    let fixed = server.call(names::ENTRY_FIX, EntryFixParams { entry })?;
+    println!("created: {path}");
+    if fixed.starts_with("renamed:") {
+        println!("{fixed}");
+    }
+    Ok(())
+}
+
+fn run_editor(path: &Path) -> Result<()> {
     let editor = resolve_editor();
     let status = Command::new(&editor)
         .arg(path)
@@ -579,144 +638,6 @@ fn edit(path: &Path, state: &JournalState) -> Result<()> {
     if !status.success() {
         bail!("editor exited with non-zero status");
     }
-    let renamed = ops::fix_entry(path)?;
-    let final_path = match &renamed {
-        Some(new_path) => { println!("updated: {}", new_path.display()); new_path.clone() }
-        None           => { println!("updated: {}", path.display()); path.to_path_buf() }
-    };
-    if let Ok(conn) = state.open_conn() {
-        let _ = cache::upsert_entry_from_path(&conn, &final_path);
-    }
-    Ok(())
-}
-
-fn edit_new(state: &JournalState) -> Result<()> {
-    let path = ops::prepare_new_entry(&state.journal, None)?;
-
-    let editor = resolve_editor();
-    let status = Command::new(&editor)
-        .arg(&path)
-        .status()
-        .with_context(|| format!("failed to launch editor `{editor}`"))?;
-    if !status.success() {
-        let _ = std::fs::remove_file(&path);
-        bail!("editor exited with non-zero status");
-    }
-
-    let renamed = ops::fix_entry(&path)?;
-    let final_path = match &renamed {
-        Some(new_path) => { println!("created: {}", new_path.display()); new_path.clone() }
-        None           => { println!("created: {}", path.display()); path.clone() }
-    };
-    if let Ok(conn) = state.open_conn() {
-        let _ = cache::upsert_entry_from_path(&conn, &final_path);
-    }
-    Ok(())
-}
-
-// ── modify ────────────────────────────────────────────────────────────────────
-
-fn set(state: &JournalState, path: &Path, fields: EntryFields, no_parent: bool) -> Result<()> {
-    if fields.title.is_none()
-        && fields.body.is_none()
-        && fields.parent.is_none()
-        && fields.slug.is_none()
-        && fields.tags.is_none()
-        && fields.task_due.is_none()
-        && fields.task_status.is_none()
-        && fields.task_started_at.is_none()
-        && fields.task_closed_at.is_none()
-        && fields.event_start.is_none()
-        && fields.event_end.is_none()
-        && !no_parent
-    {
-        bail!("nothing to update — specify at least one field");
-    }
-    state.sync()?;
-    let conn = state.open_conn()?;
-    let mut core_fields: CoreEntryFields = fields.into();
-    if no_parent {
-        core_fields.parent = UpdateOption::Clear;
-    }
-    let new_path_opt = ops::update_entry(path, &conn, core_fields)?;
-    if let Some(new_path) = new_path_opt {
-        let _ = cache::upsert_entry_from_path(&conn, &new_path);
-        println!("updated and renamed: {}", new_path.display());
-    } else {
-        let _ = cache::upsert_entry_from_path(&conn, path);
-        println!("updated: {}", path.display());
-    }
-    Ok(())
-}
-
-// ── check ─────────────────────────────────────────────────────────────────────
-
-fn check(state: &JournalState, entry: &str) -> Result<()> {
-    let path = resolve_entry(state, entry)?;
-    let issues = ops::check_entry(&path)?;
-    if issues.is_empty() {
-        println!("ok: {}", path.display());
-    } else {
-        for issue in &issues {
-            println!("{}: {}", path.display(), issue.as_str());
-        }
-    }
-    Ok(())
-}
-
-// ── fix ───────────────────────────────────────────────────────────────────────
-
-fn fix(state: &JournalState, entry: &str) -> Result<()> {
-    let path = resolve_entry(state, entry)?;
-    match ops::fix_entry(&path)? {
-        Some(new_path) => {
-            if let Ok(conn) = state.open_conn() {
-                let _ = cache::upsert_entry_from_path(&conn, &new_path);
-            }
-            println!(
-                "renamed: {} → {}",
-                path.file_name().unwrap_or_default().to_string_lossy(),
-                new_path.file_name().unwrap_or_default().to_string_lossy(),
-            );
-        }
-        None => {
-            println!("ok: {} (already correct)", path.display());
-        }
-    }
-    Ok(())
-}
-
-// ── path ──────────────────────────────────────────────────────────────────────
-
-fn entry_path(state: &JournalState, entry: Option<&str>, new: bool, parent: Option<&str>) -> Result<()> {
-    if new {
-        let parent_id = if let Some(p) = parent {
-            let entry_ref = EntryRef::parse(p);
-            state.sync()?;
-            let conn = state.open_conn()?;
-            Some(ops::resolve_parent_id(&conn, Some(&entry_ref))?)
-        } else {
-            None
-        };
-        let path = ops::prepare_new_entry(&state.journal, parent_id.flatten())?;
-        println!("{}", path.display());
-    } else {
-        let path = resolve_entry(state, entry.unwrap())?;
-        println!("{}", path.display());
-    }
-    Ok(())
-}
-
-// ── remove ────────────────────────────────────────────────────────────────────
-
-fn remove(state: &JournalState, entry: &str) -> Result<()> {
-    state.sync()?;
-    let path = resolve_entry(state, entry)?;
-    ops::remove_entry(&path)?;
-    if let Ok(conn) = state.open_conn() {
-        let _ = cache::remove_from_cache(&conn, &path);
-    }
-    println!("removed: {}", path.display());
     Ok(())
 }
 

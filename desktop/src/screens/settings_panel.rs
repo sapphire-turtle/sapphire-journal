@@ -1,173 +1,119 @@
-//! Settings panel — per-journal (`.sapphire-journal/config.toml` + git remote)
-//! and global (`$XDG_CONFIG_HOME/sapphire-journal/config.toml`) preferences.
+//! Settings panel — the journal's `.sapphire-journal/config.toml` and the
+//! host's `sapphire-journal/config.toml`, read and written by the server
+//! (`config_get` / `config_set`).
 //!
-//! Opened from the journal-switcher menu in `journal_home`.
-
-use std::path::{Path, PathBuf};
+//! Opened from the journal menu in `journal_home`.
 
 use eframe::egui;
 
-use sapphire_journal_core::{
-    journal::{DuplicateTitlePolicy, Journal, JournalConfig},
-    user_config::UserConfig,
-};
+use sapphire_journal_core::journal::DuplicateTitlePolicy;
+use sapphire_journal_core::ops::UpdateOption;
+use sapphire_journal_mcp::methods::{ConfigSetParams, JournalSettings};
 
 use crate::app::App;
 
 const DUP_TITLE_OPTIONS: &[&str] = &["allow", "warn", "error"];
 
+/// The panel's form; empty until the server's settings arrive.
 pub struct SettingsPanelState {
-    journal_root: PathBuf,
+    /// The settings as the server last reported them.
+    current: Option<JournalSettings>,
 
     // ── Per-journal ────────────────────────────────────────────────────────
-    git_remote: String,
     duplicate_title: String,
     entries_dir: String,
 
-    // ── Global ─────────────────────────────────────────────────────────────
+    // ── Host ───────────────────────────────────────────────────────────────
     sync_interval_minutes: String,
 
-    error_msg: Option<String>,
+    /// A save is on its way.
+    saving: bool,
+    pub error_msg: Option<String>,
     info_msg: Option<String>,
 }
 
 impl SettingsPanelState {
-    /// Build the state by reading current on-disk values.
-    pub fn open(journal_root: PathBuf) -> Self {
-        let journal_cfg = Journal::from_root(journal_root.clone())
-            .and_then(|j| j.config())
-            .unwrap_or_default();
-        let duplicate_title = match journal_cfg.journal.duplicate_title {
-            DuplicateTitlePolicy::Allow => "allow",
-            DuplicateTitlePolicy::Warn => "warn",
-            DuplicateTitlePolicy::Error => "error",
-        }
-        .to_string();
-        let entries_dir = journal_cfg.journal.entries_dir.unwrap_or_default();
-        let git_remote = git2::Repository::open(&journal_root)
-            .ok()
-            .and_then(|repo| {
-                repo.find_remote("origin")
-                    .ok()
-                    .and_then(|r| r.url().ok().map(str::to_owned))
-            })
-            .unwrap_or_default();
-
-        let user_cfg = UserConfig::load().unwrap_or_default();
-        let sync_interval_minutes = user_cfg
-            .sync_interval_minutes
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "10".to_string());
-
+    /// An empty panel; the caller asks the server for the settings.
+    pub fn open() -> Self {
         Self {
-            journal_root,
-            git_remote,
-            duplicate_title,
-            entries_dir,
-            sync_interval_minutes,
+            current: None,
+            duplicate_title: String::new(),
+            entries_dir: String::new(),
+            sync_interval_minutes: String::new(),
+            saving: false,
             error_msg: None,
             info_msg: None,
         }
     }
 
-    fn save(&mut self) -> bool {
-        self.error_msg = None;
-        self.info_msg = None;
+    /// Fill the form from what the server reported.
+    pub fn loaded(&mut self, settings: JournalSettings) {
+        self.duplicate_title = policy_name(settings.duplicate_title).to_string();
+        self.entries_dir = settings.entries_dir.clone().unwrap_or_default();
+        self.sync_interval_minutes = settings
+            .sync_interval_minutes
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "10".to_string());
+        self.current = Some(settings);
+    }
 
-        let interval = match self.sync_interval_minutes.trim().parse::<u32>() {
-            Ok(n) => n,
-            Err(_) => {
-                self.error_msg =
-                    Some("Sync interval must be a non-negative integer (0 to disable).".to_string());
-                return false;
+    /// The server's answer to a save.
+    pub fn saved(&mut self, result: Result<JournalSettings, String>) {
+        self.saving = false;
+        match result {
+            Ok(settings) => {
+                let entries_dir_changed = self
+                    .current
+                    .as_ref()
+                    .is_some_and(|c| c.entries_dir != settings.entries_dir);
+                self.loaded(settings);
+                self.info_msg = Some(
+                    if entries_dir_changed {
+                        "Saved. Refresh to see entries from the new directory."
+                    } else {
+                        "Saved."
+                    }
+                    .to_string(),
+                );
             }
-        };
-
-        let mut user_cfg = UserConfig::load().unwrap_or_default();
-        user_cfg.sync_interval_minutes = Some(interval);
-        if let Err(e) = write_user_config(&user_cfg) {
-            self.error_msg = Some(format!("Failed to save user config: {e}"));
-            return false;
+            Err(e) => self.error_msg = Some(format!("Failed to save: {e}")),
         }
+    }
 
-        let journal = match Journal::from_root(self.journal_root.clone()) {
-            Ok(j) => j,
-            Err(e) => {
-                self.error_msg = Some(format!("Failed to open journal: {e}"));
-                return false;
-            }
-        };
-        let mut jc = journal.config().unwrap_or_default();
-        jc.journal.duplicate_title = match self.duplicate_title.as_str() {
+    /// The change the form asks for, or why it cannot be sent.
+    fn params(&self) -> Result<ConfigSetParams, String> {
+        let sync_interval_minutes = self
+            .sync_interval_minutes
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| "Sync interval must be a non-negative integer (0 to disable).".to_string())?;
+        let duplicate_title = match self.duplicate_title.as_str() {
             "allow" => DuplicateTitlePolicy::Allow,
             "error" => DuplicateTitlePolicy::Error,
             _ => DuplicateTitlePolicy::Warn,
         };
-        let new_entries_dir = if self.entries_dir.trim().is_empty() {
-            None
-        } else {
-            Some(self.entries_dir.trim().to_string())
+        let entries_dir = match self.entries_dir.trim() {
+            "" => UpdateOption::Clear,
+            dir => UpdateOption::Set(dir.to_string()),
         };
-        let entries_dir_changed = jc.journal.entries_dir != new_entries_dir;
-        jc.journal.entries_dir = new_entries_dir;
-        if let Err(e) = write_journal_config(&journal, &jc) {
-            self.error_msg = Some(format!("Failed to save journal config: {e}"));
-            return false;
-        }
-
-        if !self.git_remote.trim().is_empty() {
-            if let Err(e) = set_git_remote(&self.journal_root, self.git_remote.trim()) {
-                self.error_msg = Some(format!("Failed to set git remote: {e}"));
-                return false;
-            }
-        }
-
-        self.info_msg = Some(if entries_dir_changed {
-            "Saved. Restart or refresh to see entries from the new directory."
-        } else {
-            "Saved."
-        }
-        .to_string());
-        true
+        Ok(ConfigSetParams {
+            sync_interval_minutes: Some(sync_interval_minutes),
+            duplicate_title: Some(duplicate_title),
+            entries_dir,
+        })
     }
 }
 
-fn write_user_config(cfg: &UserConfig) -> Result<(), String> {
-    let path = UserConfig::path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+fn policy_name(policy: DuplicateTitlePolicy) -> &'static str {
+    match policy {
+        DuplicateTitlePolicy::Allow => "allow",
+        DuplicateTitlePolicy::Warn => "warn",
+        DuplicateTitlePolicy::Error => "error",
     }
-    let content = toml::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(&path, content).map_err(|e| e.to_string())
-}
-
-fn write_journal_config(journal: &Journal, cfg: &JournalConfig) -> Result<(), String> {
-    let path = journal.journal_dir().join("config.toml");
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let content = toml::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(&path, content).map_err(|e| e.to_string())
-}
-
-fn set_git_remote(journal_root: &Path, url: &str) -> Result<(), String> {
-    let repo = git2::Repository::open(journal_root).map_err(|e| e.to_string())?;
-    match repo.find_remote("origin") {
-        Ok(_) => {
-            repo.remote_set_url("origin", url).map_err(|e| e.to_string())?;
-        }
-        Err(_) => {
-            repo.remote("origin", url).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
 }
 
 /// Render the panel.  No-op when `app.settings_panel` is `None`.
 pub fn show(app: &mut App, ctx: &egui::Context) {
-    // Take ownership so the in-window UI can borrow `state` mutably while
-    // the post-render reconciliation below freely mutates other fields on
-    // `app` (e.g. refreshing `app.settings` from disk after a Save).
     let Some(mut state) = app.settings_panel.take() else {
         return;
     };
@@ -182,17 +128,17 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .open(&mut open_flag)
         .show(ctx, |ui| {
+            if state.current.is_none() {
+                if let Some(msg) = state.error_msg.clone() {
+                    ui.colored_label(egui::Color32::LIGHT_RED, msg);
+                } else {
+                    ui.spinner();
+                }
+                return;
+            }
+
             ui.heading("This journal");
             ui.add_space(4.0);
-
-            ui.label("Git remote (origin)");
-            ui.add(
-                egui::TextEdit::singleline(&mut state.git_remote)
-                    .hint_text("git@github.com:user/repo.git")
-                    .desired_width(f32::INFINITY),
-            );
-            ui.weak("Empty input leaves the remote unchanged.  Use `git` to remove it.");
-            ui.add_space(6.0);
 
             ui.label("Duplicate title policy");
             egui::ComboBox::from_id_salt("settings_dup_title")
@@ -216,11 +162,11 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             ui.separator();
             ui.add_space(6.0);
 
-            ui.heading("Global");
-            ui.weak("Applies to all journals — takes effect on next launch.");
+            ui.heading("This computer");
+            ui.weak("Takes effect when the sapphire-journal server next starts.");
             ui.add_space(4.0);
 
-            ui.label("Re-index interval (minutes; 0 to disable)");
+            ui.label("Re-scan interval (minutes; 0 to disable)");
             ui.add(
                 egui::TextEdit::singleline(&mut state.sync_interval_minutes)
                     .desired_width(80.0),
@@ -249,7 +195,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Save").clicked() {
+                    if ui.add_enabled(!state.saving, egui::Button::new("Save")).clicked() {
                         do_save = true;
                     }
                     if ui.button("Close").clicked() {
@@ -263,7 +209,15 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         close = true;
     }
     if do_save {
-        state.save();
+        state.error_msg = None;
+        state.info_msg = None;
+        match state.params() {
+            Ok(params) => {
+                state.saving = true;
+                app.api.set_settings(params);
+            }
+            Err(e) => state.error_msg = Some(e),
+        }
     }
     if !close {
         app.settings_panel = Some(state);

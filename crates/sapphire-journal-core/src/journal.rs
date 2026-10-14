@@ -148,10 +148,20 @@ impl Journal {
     fn save_journal_id(&self, id: Uuid) -> Result<()> {
         let mut config = self.config()?;
         config.journal.id = Some(id);
-        let path = self.journal_dir().join("config.toml");
-        let content = toml::to_string_pretty(&config)
+        self.save_config(&config)
+    }
+
+    /// Path of the journal-level config, `.sapphire-journal/config.toml`.
+    pub fn config_path(&self) -> PathBuf {
+        self.journal_dir().join("config.toml")
+    }
+
+    /// Write `config` to `.sapphire-journal/config.toml`, keeping the tables
+    /// other than `[journal]` it was read with.
+    pub fn save_config(&self, config: &JournalConfig) -> Result<()> {
+        let content = toml::to_string_pretty(config)
             .map_err(|e| Error::InvalidConfig(e.to_string()))?;
-        std::fs::write(&path, content)?;
+        std::fs::write(self.config_path(), content)?;
         Ok(())
     }
 
@@ -213,6 +223,11 @@ fn collect_md_in(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
 pub struct JournalConfig {
     #[serde(default)]
     pub journal: JournalSection,
+
+    /// The other tables of the marker's `config.toml`, kept as they are: the
+    /// framework writes its `[workspace]` registry into the same file.
+    #[serde(flatten)]
+    pub extra: IndexMap<String, toml::Value>,
 }
 
 #[allow(deprecated)]

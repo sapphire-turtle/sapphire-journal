@@ -100,7 +100,10 @@ pub struct EventMeta {
 
 /// A single entry — one Markdown file in the journal.
 /// Tasks and notes coexist freely in the body (bullet-journal style).
-#[derive(Debug, Clone)]
+///
+/// Serializable so the app server can hand a whole entry to its clients and
+/// take one back (`entry_get` / `entry_save`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
     /// Absolute path to the source .md file.
     pub path: PathBuf,
@@ -127,14 +130,14 @@ impl Entry {
 /// Read-only view of [`TaskMeta`] used for cache output and JSON serialization.
 ///
 /// Unlike [`TaskMeta`], this type has no `extra` field and can derive [`Serialize`] cleanly.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskMetaView {
-    #[serde(skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::eod::opt")]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::eod::opt")]
     pub due: Option<NaiveDateTime>,
     pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
     pub started_at: Option<NaiveDateTime>,
-    #[serde(skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
     pub closed_at: Option<NaiveDateTime>,
 }
 
@@ -147,7 +150,7 @@ impl From<TaskMeta> for TaskMetaView {
 /// Read-only view of [`EventMeta`] used for cache output and JSON serialization.
 ///
 /// Unlike [`EventMeta`], this type has no `extra` field and can derive [`Serialize`] cleanly.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventMetaView {
     #[serde(with = "naive_datetime_serde")]
     pub start: NaiveDateTime,
@@ -164,11 +167,12 @@ impl From<EventMeta> for EventMetaView {
 /// Read-only view of [`Frontmatter`] used for cache output and JSON serialization.
 ///
 /// Unlike [`Frontmatter`], this type has no `extra` field and can derive [`Serialize`] cleanly.
-/// `parent_id` is retained for internal use (e.g. tree building) but excluded from serialization.
-#[derive(Debug, Clone, Serialize)]
+/// `parent_id` is serialized when set, so a client of the app server can build
+/// the tree itself.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrontmatterView {
     pub id: GrainId,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<GrainId>,
     pub title: String,
     pub slug: String,
@@ -177,13 +181,13 @@ pub struct FrontmatterView {
     #[serde(with = "naive_datetime_serde")]
     pub updated_at: NaiveDateTime,
     pub tags: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<TaskMetaView>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<EventMetaView>,
     /// Explicitly hidden flag. `Some(true)` marks the entry as hidden;
     /// `None` (absent/false) is normally visible.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden: Option<bool>,
 }
 
@@ -208,7 +212,7 @@ impl From<Frontmatter> for FrontmatterView {
 ///
 /// Returned by list operations to avoid loading large bodies into memory
 /// and to keep JSON output compact (e.g. for AI consumers).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntryHeader {
     pub path: String,
     #[serde(flatten)]

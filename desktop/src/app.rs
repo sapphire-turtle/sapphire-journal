@@ -1,121 +1,63 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use chrono::NaiveDate;
 use eframe::egui;
 use grain_id::GrainId;
-use sapphire_journal_core::{JournalState, entry::EntryHeader, user_config::UserConfig};
-use tokio::sync::mpsc;
-use tokio::time;
-use uuid::Uuid;
+use sapphire_framework::gui::SyncPanel;
+use sapphire_journal_core::entry::{Entry, EntryHeader};
 
-use crate::registry::{JournalRegistry, RegistryEntry};
+use crate::api::{Api, Reply};
 use crate::screens;
 use crate::screens::settings_panel::SettingsPanelState;
 use crate::settings::{RightTab, Settings};
 
-#[derive(Clone, PartialEq)]
-pub enum AppState {
-    List,
-    Home { journal_id: Uuid },
-}
-
-pub enum DialogState {
-    NewJournal(NewJournalState),
-    Clone(CloneState),
-    ConfirmDelete(ConfirmDeleteState),
-}
+/// How often the journal tab re-reads the entry list on its own, to pick up
+/// what the CLI, an agent or sync wrote.
+pub const REFRESH_EVERY: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum DialogKind {
-    NewJournal,
-    Clone,
-    ConfirmDelete,
+pub enum Tab {
+    Journal,
+    Sync,
 }
 
-impl DialogState {
-    pub fn kind(&self) -> DialogKind {
-        match self {
-            DialogState::NewJournal(_) => DialogKind::NewJournal,
-            DialogState::Clone(_) => DialogKind::Clone,
-            DialogState::ConfirmDelete(_) => DialogKind::ConfirmDelete,
-        }
-    }
-}
-
-pub struct NewJournalState {
-    pub name: String,
-    pub in_progress: bool,
-}
-
-pub struct CloneState {
-    pub name: String,
-    pub url: String,
-    pub progress: Arc<Mutex<Option<f32>>>,
-}
-
-pub struct ConfirmDeleteState {
-    pub entry: RegistryEntry,
-    pub typed: String,
-    pub in_progress: bool,
-}
-
-pub enum AppEvent {
-    JournalAdded(RegistryEntry),
-    JournalRemoved(Uuid),
-    Error(String),
-    CleanupAndError {
-        storage_path: PathBuf,
-        error: String,
-    },
-    /// Sent by the periodic-sync task after a successful sync so the UI can
-    /// reload entries that may have been added or modified by `git pull`.
-    EntriesNeedReload,
-    /// Sent when the user-triggered "Sync now" task completes (or times out).
-    /// `Ok(())` triggers a reload; `Err(msg)` is surfaced as a home error banner.
-    SyncFinished(std::result::Result<(), String>),
-}
-
+/// The desktop app: a client of the `sapphire-journal` server and the
+/// host's bridge. The Journal tab shows the journal the server serves; the
+/// Sync tab (the framework's panel) chooses that journal and manages sync.
 pub struct App {
-    pub screen: AppState,
-    pub registry: JournalRegistry,
+    pub tab: Tab,
     pub settings: Settings,
-    pub dialog: Option<DialogState>,
-    pub error_msg: Option<String>,
-    pub home: Option<HomeState>,
-    /// When the user went to the journal-list screen from an open journal,
-    /// this records that journal so the list can offer a "back" button.
-    pub previous_journal_id: Option<Uuid>,
-    /// Currently-open journal's [`JournalState`] (entry cache).
-    /// `None` when no journal is open.  Shared with the background re-index
-    /// tokio task, hence `Arc<Mutex<…>>`.
-    pub journal_state: Arc<Mutex<Option<JournalState>>>,
-    /// When `Some`, the Settings window is shown on top of the current
-    /// screen.  Opened from the journal switcher menu.
+    pub home: HomeState,
+    /// When `Some`, the Settings window is shown on top of the journal tab.
     pub settings_panel: Option<SettingsPanelState>,
-    pub runtime: Arc<tokio::runtime::Runtime>,
-    pub event_tx: mpsc::UnboundedSender<AppEvent>,
-    pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
+    pub sync: SyncPanel,
+    pub api: Api,
+    replies: mpsc::Receiver<Reply>,
+    // Keeps the clients' background tasks alive for the window's lifetime.
+    _runtime: tokio::runtime::Runtime,
 }
 
-/// State for the journal-home screen (sidebar + editor).
-///
-/// Created when entering `AppState::Home` for a given journal and cleared
-/// when going back to the list.  Holds both transient UI state (filters,
-/// selection, form fields) and the loaded entry headers shown in the sidebar.
+/// State for the journal tab (sidebar + editor).
 pub struct HomeState {
-    pub journal_id: Uuid,
-    pub journal_root: PathBuf,
-    pub journal_name: String,
+    pub api: Api,
 
-    /// Cached headers for the entry sidebar; refreshed when `needs_reload` is set.
+    /// The journal the server serves, once the server has said.
+    pub journal_root: Option<PathBuf>,
+
+    /// Headers for the entry sidebar, as the server last listed them.
     pub entries: Vec<EntryHeader>,
+    /// Why the list could not be read (no server, no journal selected, …).
     pub entries_error: Option<String>,
-    pub needs_reload: bool,
+    /// A list request is on its way.
+    pub listing: bool,
+    pub last_listed: Option<Instant>,
 
     /// Currently-selected entry, if any.
     pub selected_path: Option<PathBuf>,
+    /// The selected entry's form; `None` while it loads.
     pub editor: Option<EditorState>,
 
     /// Hierarchical (tree) or flat (list) display of entries.
@@ -149,7 +91,7 @@ pub struct HomeState {
     pub error_msg: Option<String>,
     pub info_msg: Option<String>,
 
-    /// `true` while a user-triggered "Sync now" task is running. Used to
+    /// `true` while a user-triggered refresh is running. Used to
     /// short-circuit duplicate clicks and to render a spinner in the header.
     pub sync_in_progress: bool,
     /// Whether the Obsidian-style right metadata sidebar is currently shown.
@@ -164,14 +106,14 @@ pub struct HomeState {
 }
 
 impl HomeState {
-    pub fn new(entry: RegistryEntry, settings: &Settings) -> Self {
+    pub fn new(api: Api, settings: &Settings) -> Self {
         Self {
-            journal_id: entry.id,
-            journal_root: entry.storage_path,
-            journal_name: entry.name,
+            api,
+            journal_root: None,
             entries: Vec::new(),
             entries_error: None,
-            needs_reload: true,
+            listing: false,
+            last_listed: None,
             selected_path: None,
             editor: None,
             view_mode: ViewMode::Tree,
@@ -200,6 +142,25 @@ impl HomeState {
             .iter()
             .find(|h| Path::new(&h.path) == path.as_path())
     }
+
+    /// Ask the server for the entry list, unless a request is already out.
+    pub fn reload(&mut self) {
+        if self.listing {
+            return;
+        }
+        self.listing = true;
+        self.last_listed = Some(Instant::now());
+        self.api.list();
+    }
+
+    /// Select `path` and ask the server for it; the editor shows it when it
+    /// arrives.
+    pub fn select(&mut self, path: PathBuf) {
+        self.selected_path = Some(path.clone());
+        self.editor = None;
+        self.info_msg = None;
+        self.api.get(path);
+    }
 }
 
 /// How the entry sidebar should display entries.
@@ -217,6 +178,10 @@ pub enum ViewMode {
 /// that selection-aware UI (e.g. the sidebar's active-row highlight) and the
 /// editor stay in sync.
 pub struct EditorState {
+    /// The entry as the server last returned it: saving writes the form's
+    /// fields over it, so what the form does not show (`extra`, timestamps)
+    /// survives.
+    pub base: Entry,
     pub id: String,
     pub title: String,
     /// Comma-separated tag input.
@@ -232,174 +197,116 @@ pub struct EditorState {
 }
 
 impl App {
-    pub fn new(egui_ctx: egui::Context) -> Self {
-        let runtime = Arc::new(
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .expect("failed to start tokio runtime"),
-        );
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
-        let registry = JournalRegistry::load().unwrap_or_default();
+    pub fn new(
+        runtime: tokio::runtime::Runtime,
+        api: Api,
+        replies: mpsc::Receiver<Reply>,
+        sync: SyncPanel,
+    ) -> Self {
         let settings = Settings::load().unwrap_or_default();
-
-        // Resume into the previously-open journal when possible; otherwise
-        // fall back to the list screen as a first-run / picker fallback.
-        let (screen, home) = match settings
-            .last_opened_journal_id
-            .and_then(|id| registry.journals.iter().find(|e| e.id == id).cloned())
-            .filter(|entry| entry.storage_path.join(".sapphire-journal").is_dir())
-        {
-            Some(entry) => {
-                let id = entry.id;
-                (
-                    AppState::Home { journal_id: id },
-                    Some(HomeState::new(entry, &settings)),
-                )
-            }
-            None => (AppState::List, None),
-        };
-
-        let journal_state: Arc<Mutex<Option<JournalState>>> = Arc::new(Mutex::new(None));
-
-        // Periodic background re-index: cache + retrieve refresh, mirroring
-        // the cadence used by the MCP server.  Skips ticks when no journal is
-        // open. Each tick runs on a blocking worker with a timeout so a hung
-        // sync can't stall every future tick.
-        if let Some(interval) = UserConfig::load().ok().and_then(|c| c.sync_interval()) {
-            let state_arc = Arc::clone(&journal_state);
-            let tx = event_tx.clone();
-            let ctx = egui_ctx.clone();
-            runtime.spawn(async move {
-                let mut ticker = time::interval(interval);
-                ticker.tick().await; // skip the immediate first tick
-                loop {
-                    ticker.tick().await;
-                    let state_arc_inner = Arc::clone(&state_arc);
-                    let handle = tokio::task::spawn_blocking(move || {
-                        let guard = state_arc_inner.lock().unwrap();
-                        let Some(state) = guard.as_ref() else {
-                            return Ok::<bool, String>(false);
-                        };
-                        state.sync().map_err(|e| format!("re-index: {e}"))?;
-                        Ok(true)
-                    });
-                    let outcome = tokio::time::timeout(
-                        std::time::Duration::from_secs(120),
-                        handle,
-                    )
-                    .await;
-                    match outcome {
-                        Ok(Ok(Ok(true))) => {
-                            let _ = tx.send(AppEvent::EntriesNeedReload);
-                        }
-                        Ok(Ok(Ok(false))) => {
-                            // No journal open this tick — nothing to do.
-                        }
-                        Ok(Ok(Err(msg))) => {
-                            let _ = tx.send(AppEvent::Error(format!(
-                                "Periodic re-index failed: {msg}"
-                            )));
-                        }
-                        Ok(Err(join_err)) => {
-                            let _ = tx.send(AppEvent::Error(format!(
-                                "Periodic re-index task panicked: {join_err}"
-                            )));
-                        }
-                        Err(_elapsed) => {
-                            let _ = tx.send(AppEvent::Error(
-                                "Periodic re-index timed out after 120s.".to_string(),
-                            ));
-                        }
-                    }
-                    // Wake the UI thread so the event is processed promptly
-                    // even if the window has no pending input.
-                    ctx.request_repaint();
-                }
-            });
-        }
-
+        let mut home = HomeState::new(api.clone(), &settings);
+        home.reload();
+        api.settings();
         Self {
-            screen,
-            registry,
+            tab: Tab::Journal,
             settings,
-            dialog: None,
-            error_msg: None,
             home,
-            previous_journal_id: None,
-            journal_state,
             settings_panel: None,
-            runtime,
-            event_tx,
-            event_rx,
+            sync,
+            api,
+            replies,
+            _runtime: runtime,
         }
     }
 
-    /// Update `settings.last_opened_journal_id` and persist immediately.
-    /// Errors fall into `self.error_msg`.
-    pub fn remember_last_opened(&mut self, id: Option<Uuid>) {
-        if self.settings.last_opened_journal_id == id {
-            return;
-        }
-        self.settings.last_opened_journal_id = id;
-        if let Err(e) = self.settings.save() {
-            self.error_msg = Some(format!("Failed to save settings: {e}"));
-        }
-    }
-
-    fn handle_events(&mut self) {
-        while let Ok(ev) = self.event_rx.try_recv() {
-            match ev {
-                AppEvent::JournalAdded(entry) => {
-                    self.registry.add(entry);
-                    if let Err(e) = self.registry.save() {
-                        self.error_msg = Some(e.to_string());
-                    }
-                    self.dialog = None;
-                }
-                AppEvent::JournalRemoved(id) => {
-                    self.registry.remove_by_id(id);
-                    if let Err(e) = self.registry.save() {
-                        self.error_msg = Some(e.to_string());
-                    }
-                    self.dialog = None;
-                }
-                AppEvent::Error(msg) => {
-                    // Sync / journal-state errors are user-facing — show them
-                    // on the home banner when a journal is open so they're
-                    // not silently swallowed (the app-level banner only
-                    // renders on the journal-list screen).
-                    if let Some(home) = self.home.as_mut() {
-                        home.error_msg = Some(msg);
-                    } else {
-                        self.error_msg = Some(msg);
-                    }
-                    self.dialog = None;
-                }
-                AppEvent::CleanupAndError {
-                    storage_path,
-                    error,
-                } => {
-                    let _ = std::fs::remove_dir_all(&storage_path);
-                    self.error_msg = Some(error);
-                    self.dialog = None;
-                }
-                AppEvent::EntriesNeedReload => {
-                    if let Some(home) = self.home.as_mut() {
-                        home.needs_reload = true;
-                    }
-                }
-                AppEvent::SyncFinished(result) => {
-                    if let Some(home) = self.home.as_mut() {
-                        home.sync_in_progress = false;
-                        match result {
-                            Ok(()) => {
-                                home.needs_reload = true;
-                            }
-                            Err(msg) => {
-                                home.error_msg = Some(msg);
-                            }
+    fn handle_replies(&mut self) {
+        while let Ok(reply) = self.replies.try_recv() {
+            let home = &mut self.home;
+            match reply {
+                Reply::Entries(result) => {
+                    home.listing = false;
+                    match result {
+                        Ok(entries) => {
+                            home.entries = entries;
+                            home.entries_error = None;
                         }
+                        // Keep showing the last list: a server restart should
+                        // not blank the window.
+                        Err(e) => home.entries_error = Some(e),
+                    }
+                }
+                Reply::Loaded(path, result) => {
+                    // A reply for an entry no longer selected is stale.
+                    if home.selected_path.as_ref() != Some(&path) {
+                        continue;
+                    }
+                    match result {
+                        Ok(entry) => home.editor = Some(screens::journal_home::editor_for(*entry)),
+                        Err(e) => home.error_msg = Some(e),
+                    }
+                }
+                Reply::Prepared(result) => match result {
+                    Ok(path) => {
+                        home.select(path);
+                        home.reload();
+                    }
+                    Err(e) => home.error_msg = Some(e),
+                },
+                Reply::Saved(old_path, result) => match result {
+                    Ok(path) => {
+                        if home.selected_path.as_ref() == Some(&old_path) {
+                            home.select(path);
+                            home.info_msg = Some("Saved.".to_string());
+                        }
+                        home.reload();
+                    }
+                    Err(e) => home.error_msg = Some(format!("Save failed: {e}")),
+                },
+                Reply::Removed(path, result) => match result {
+                    Ok(()) => {
+                        if home.selected_path.as_ref() == Some(&path) {
+                            home.selected_path = None;
+                            home.editor = None;
+                            home.info_msg = None;
+                        }
+                        home.reload();
+                    }
+                    Err(e) => home.error_msg = Some(e),
+                },
+                Reply::Reparented(old_path, result) => match result {
+                    Ok(path) => {
+                        // Track selection if it moved with a rename.
+                        if home.selected_path.as_ref() == Some(&old_path) {
+                            home.selected_path = Some(path);
+                        }
+                        home.info_msg = Some("Reparented.".to_string());
+                        home.reload();
+                    }
+                    Err(e) => home.error_msg = Some(format!("Reparent failed: {e}")),
+                },
+                Reply::Refreshed(result) => {
+                    home.sync_in_progress = false;
+                    match result {
+                        Ok(()) => home.reload(),
+                        Err(e) => home.error_msg = Some(format!("Refresh failed: {e}")),
+                    }
+                }
+                Reply::Settings(result) => match result {
+                    Ok(settings) => {
+                        home.journal_root = Some(settings.root.clone());
+                        if let Some(panel) = self.settings_panel.as_mut() {
+                            panel.loaded(settings);
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(panel) = self.settings_panel.as_mut() {
+                            panel.error_msg = Some(e);
+                        }
+                    }
+                },
+                Reply::SettingsSaved(result) => {
+                    if let Some(panel) = self.settings_panel.as_mut() {
+                        panel.saved(result);
                     }
                 }
             }
@@ -409,22 +316,32 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.handle_events();
+        self.handle_replies();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // While a clone is in progress we need the UI to keep repainting so the
-        // progress bar advances even when no input events arrive.
-        if let Some(DialogState::Clone(state)) = &self.dialog {
-            if state.progress.lock().unwrap().is_some() {
-                ui.ctx()
-                    .request_repaint_after(std::time::Duration::from_millis(100));
-            }
+        // Re-read the list on its own now and then, and wake up for it even
+        // if nothing else happens.
+        if self.tab == Tab::Journal
+            && self.home.last_listed.is_none_or(|t| t.elapsed() >= REFRESH_EVERY)
+        {
+            // A switch in the Sync tab may have changed the journal.
+            self.api.settings();
+            self.home.reload();
         }
+        ui.ctx().request_repaint_after(REFRESH_EVERY);
 
-        match self.screen.clone() {
-            AppState::List => screens::journal_list::show(self, ui),
-            AppState::Home { journal_id } => screens::journal_home::show(self, ui, journal_id),
+        egui::Panel::top("tabs").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.tab, Tab::Journal, "Journal");
+                ui.selectable_value(&mut self.tab, Tab::Sync, "Sync");
+            });
+        });
+        match self.tab {
+            Tab::Journal => screens::journal_home::show(self, ui),
+            Tab::Sync => {
+                egui::CentralPanel::default().show(ui, |ui| self.sync.ui(ui));
+            }
         }
     }
 }

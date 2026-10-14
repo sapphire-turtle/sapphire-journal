@@ -100,14 +100,15 @@ cargo install sapphire-journal-cli
 
 コマンドリファレンス全体は[cli/README.md](cli/README.md)を参照してください。
 
-**ジャーナル**とは、`.sapphire-journal/`ディレクトリを含むディレクトリツリーのことです。`sapphire-journal init`で作成します。
+**ジャーナル**とは、`.sapphire-journal/`ディレクトリを含むディレクトリツリーのことです。既存のディレクトリを`sapphire-journal workspace init <dir>`でジャーナルにします。
 
-`sapphire-journal`は単一のバイナリです。ジャーナル独自のコマンド（`entry`、`cache`など）と、[sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework)のコマンド（`serve`、`status`、`service`、`workspace`、`mcp`など）が並んでいます。引数なし（または`serve`）で起動するとアプリサーバーになり、ジャーナルを1つ提供して検索用に索引し、ホストの`sapphire-bridge`を通じて同期し、MCPに応答します。提供するジャーナルは`sapphire-journal workspace select <dir>`で選びます。ジャーナルのコマンドは、`--journal-dir`で別のものを指定しない限りそのジャーナルに対して働きます。
+`sapphire-journal`は単一のバイナリです。ジャーナル独自のコマンド（`entry`、`cache`など）と、[sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework)のコマンド（`serve`、`status`、`service`、`workspace`、`mcp`など）が並んでいます。引数なし（または`serve`）で起動するとアプリサーバーになります。ジャーナルを読み書きするのはこのサーバーだけで、ジャーナルを1つ提供して検索用に索引し、ホストの`sapphire-bridge`を通じて同期し、MCPに応答します。それ以外のコマンドとデスクトップアプリはすべてIPC経由のクライアントで、サーバーが提供しているジャーナルに対して働きます（`sapphire-journal workspace init|select <dir>`で選びます）。
 
 ```sh
-sapphire-journal init ~/journal
-sapphire-journal workspace select ~/journal
 sapphire-journal service install        # またはターミナルで `sapphire-journal serve`
+mkdir -p ~/journal
+sapphire-journal workspace init ~/journal
+sapphire-journal entry new --title "Hello"
 ```
 
 AIエージェントは`sapphire-journal mcp`（stdio）で接続します。サーバーの`server.toml`に`[mcp] http = true`を設定すれば、HTTPの`http://127.0.0.1:3172/mcp`でも接続できます。意味検索にはホストの`sapphire-bridge`が動かす埋め込みモデルを使います（`sapphire-journal embedding show`）。モデルがなければ全文検索になります。

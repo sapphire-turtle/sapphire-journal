@@ -42,13 +42,25 @@ fn the_framework_verbs_sit_at_the_top_level() {
 
 #[test]
 fn the_journal_verbs_still_parse_beside_them() {
-    assert!(matches!(parse(&["init", "/tmp/j"]).command, Some(Command::Init { .. })));
     assert!(matches!(
-        parse(&["--journal-dir", "/tmp/j", "entry", "list", "today"]).command,
+        parse(&["entry", "list", "today"]).command,
         Some(Command::Entry { .. })
     ));
     assert!(matches!(parse(&["cache", "info"]).command, Some(Command::Cache { .. })));
     assert!(matches!(parse(&["config", "show"]).command, Some(Command::Config { .. })));
+}
+
+#[test]
+fn the_journal_follows_the_server_not_a_directory() {
+    // The server serves one journal; `workspace init|select` picks it.
+    for args in [&["init", "/tmp/j"][..], &["--journal-dir", "/tmp/j", "entry", "list", "today"]] {
+        let parsed = Cli::try_parse_from(std::iter::once("sapphire-journal").chain(args.iter().copied()));
+        assert!(parsed.is_err(), "{args:?} should no longer parse");
+    }
+    assert!(matches!(
+        parse(&["workspace", "init", "/tmp/j"]).command,
+        Some(Command::Framework(_))
+    ));
 }
 
 #[test]

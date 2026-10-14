@@ -6,9 +6,14 @@
 //! server) and `/mcp` on the server's HTTP listener alike. [`register`] adds
 //! the methods to the server's router; [`crate::tools`] is the other end.
 //!
+//! The same methods serve the CLI and the desktop app: the app server is the
+//! only process that reads or writes the journal's files and its entry cache,
+//! and every other process asks it. Some methods exist for those clients only
+//! (`entry_get`, `entry_save`, `config_*`, …) and have no MCP tool.
+//!
 //! [`JournalMethods`] is the journal side of one call: an
-//! `Arc<Mutex<JournalState>>`, and a function per method returning the text the
-//! agent reads.
+//! `Arc<Mutex<JournalState>>`, and a function per method returning text — the
+//! message an agent or a person reads, or JSON for a client to parse.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -16,11 +21,13 @@ use std::sync::{Arc, Mutex};
 use sapphire_framework::ipc::{RequestCtx, Router, RpcError};
 use sapphire_journal_core::{
     cache,
+    entry::Entry,
     entry_ref::EntryRef,
-    journal::Journal,
+    journal::{DuplicateTitlePolicy, Journal},
     ops::{self, EntryFields, EntryListItem, UpdateOption},
-    parser::read_entry,
+    parser::{read_entry, write_entry},
     text_input::{fields as core_fields, filter as core_filter},
+    user_config::UserConfig,
     JournalState,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -52,6 +59,16 @@ pub mod names {
     pub const CACHE_INFO: &str = "sapphire-journal.cache_info";
     pub const CACHE_SYNC: &str = "sapphire-journal.cache_sync";
     pub const CACHE_REBUILD: &str = "sapphire-journal.cache_rebuild";
+
+    // For the CLI and the desktop app; no MCP tool.
+    pub const ENTRY_GET: &str = "sapphire-journal.entry_get";
+    pub const ENTRY_RESOLVE: &str = "sapphire-journal.entry_resolve";
+    pub const ENTRY_PREPARE: &str = "sapphire-journal.entry_prepare";
+    pub const ENTRY_SAVE: &str = "sapphire-journal.entry_save";
+    pub const CACHE_CLEAN: &str = "sapphire-journal.cache_clean";
+    pub const CONFIG_SHOW: &str = "sapphire-journal.config_show";
+    pub const CONFIG_GET: &str = "sapphire-journal.config_get";
+    pub const CONFIG_SET: &str = "sapphire-journal.config_set";
 }
 
 /// The version of the methods in [`names`], reported in the IPC handshake.
@@ -59,7 +76,7 @@ pub mod names {
 /// Bump it when a method's parameters or meaning change incompatibly: a
 /// client built against another version is refused at connect time rather
 /// than mid-call.
-pub const APP_API: u32 = 1;
+pub const APP_API: u32 = 2;
 
 /// Add the journal's methods to the app server's `router`, each resolving the
 /// journal through `source` when it is called, and reporting the paths a
@@ -76,7 +93,15 @@ pub fn register(router: Router, source: StateSource, on_write: Option<WriteObser
     let router = route(router, names::ENTRY_REMOVE, &methods, JournalMethods::entry_remove);
     let router = route(router, names::CACHE_INFO, &methods, JournalMethods::cache_info);
     let router = route(router, names::CACHE_SYNC, &methods, JournalMethods::cache_sync);
-    route(router, names::CACHE_REBUILD, &methods, JournalMethods::cache_rebuild)
+    let router = route(router, names::CACHE_REBUILD, &methods, JournalMethods::cache_rebuild);
+    let router = route(router, names::ENTRY_GET, &methods, JournalMethods::entry_get);
+    let router = route(router, names::ENTRY_RESOLVE, &methods, JournalMethods::entry_resolve);
+    let router = route(router, names::ENTRY_PREPARE, &methods, JournalMethods::entry_prepare);
+    let router = route(router, names::ENTRY_SAVE, &methods, JournalMethods::entry_save);
+    let router = route(router, names::CACHE_CLEAN, &methods, JournalMethods::cache_clean);
+    let router = route(router, names::CONFIG_SHOW, &methods, JournalMethods::config_show);
+    let router = route(router, names::CONFIG_GET, &methods, JournalMethods::config_get);
+    route(router, names::CONFIG_SET, &methods, JournalMethods::config_set)
 }
 
 /// What every registered method shares.
@@ -379,6 +404,52 @@ pub struct EntryRemoveParams {
     pub entry: EntryRef,
 }
 
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct EntryGetParams {
+    pub entry: EntryRef,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct EntryResolveParams {
+    pub entry: EntryRef,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct EntryPrepareParams {
+    /// Parent of the new entry, if any.
+    pub parent: Option<EntryRef>,
+}
+
+/// A whole entry to write back, as `entry_get` returned it and the client
+/// changed it. The file must already exist inside the journal.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EntrySaveParams {
+    pub entry: Entry,
+}
+
+/// The settings a client may read and change: `sync_interval_minutes` from the
+/// host's user config, the rest from the journal's `.sapphire-journal/config.toml`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JournalSettings {
+    /// The journal the server serves.
+    pub root: PathBuf,
+    pub sync_interval_minutes: Option<u32>,
+    pub duplicate_title: DuplicateTitlePolicy,
+    pub entries_dir: Option<String>,
+}
+
+/// A change to [`JournalSettings`]; an absent field stays as it is.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ConfigSetParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_interval_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duplicate_title: Option<DuplicateTitlePolicy>,
+    /// `null` clears it: entries live at the journal root.
+    #[serde(default, skip_serializing_if = "UpdateOption::is_unchanged")]
+    pub entries_dir: UpdateOption<String>,
+}
+
 // ── helpers for parameter parsing ─────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
@@ -454,7 +525,16 @@ impl JournalMethods {
     pub fn entry_tree(&self, p: EntryTreeParams) -> Result<String, String> {
         (|| -> anyhow::Result<String> {
             let filter = core_filter::build_filter(core_filter::FilterInputs::from(&p))?;
-            let entries = self.with_state(|s| ops::list_entries(s, &filter).map_err(Into::into))?;
+            let entries = self.with_state(|s| {
+                let entries = ops::list_entries(s, &filter)?;
+                // Keep a match's ancestors, flagged `parent_of_match`, so the
+                // tree still shows where it sits.
+                Ok(if filter.has_any_filter() {
+                    ops::fill_ancestor_entries(entries, s)?
+                } else {
+                    entries
+                })
+            })?;
             let roots = ops::build_entry_tree(entries);
             Ok(serde_json::to_string_pretty(&roots)?)
         })()
@@ -526,7 +606,7 @@ impl JournalMethods {
                 }
                 Ok(dest)
             })?;
-            self.notify_write(&[dest.clone()]);
+            self.notify_write(std::slice::from_ref(&dest));
             Ok(format!("created: {}", dest.display()))
         })()
         .map_err(|e| e.to_string())
@@ -615,11 +695,16 @@ impl JournalMethods {
 
     pub fn entry_fix(&self, p: EntryFixParams) -> Result<String, String> {
         (|| -> anyhow::Result<String> {
-            let path = self.with_state(|s| {
+            let (path, renamed) = self.with_state(|s| {
                 let conn = s.open_conn()?;
-                ops::resolve_entry(&p.entry, &conn).map_err(Into::into)
+                let path = ops::resolve_entry(&p.entry, &conn)?;
+                let renamed = ops::fix_entry(&path)?;
+                // The file may have been edited outside the server (`entry
+                // edit` runs the user's editor on it): refresh its row either way.
+                let _ = cache::upsert_entry_from_path(&conn, renamed.as_deref().unwrap_or(&path));
+                Ok((path, renamed))
             })?;
-            match ops::fix_entry(&path)? {
+            match renamed {
                 Some(new_path) => {
                     self.notify_write(&[path.clone(), new_path.clone()]);
                     Ok(format!(
@@ -628,7 +713,10 @@ impl JournalMethods {
                         new_path.file_name().unwrap_or_default().to_string_lossy(),
                     ))
                 }
-                None => Ok(format!("ok: {} (already correct)", path.display())),
+                None => {
+                    self.notify_write(std::slice::from_ref(&path));
+                    Ok(format!("ok: {} (already correct)", path.display()))
+                }
             }
         })()
         .map_err(|e| e.to_string())
@@ -644,7 +732,7 @@ impl JournalMethods {
                 let _ = cache::remove_from_cache(&conn, &path);
                 Ok(path)
             })?;
-            self.notify_write(&[path.clone()]);
+            self.notify_write(std::slice::from_ref(&path));
             Ok(format!("removed: {}", path.display()))
         })()
         .map_err(|e| e.to_string())
@@ -690,6 +778,194 @@ impl JournalMethods {
             Ok(format!("rebuilt: {} entries indexed", info.entry_count))
         })()
         .map_err(|e| e.to_string())
+    }
+}
+
+// ── methods for the CLI and the desktop app ───────────────────────────────────
+
+impl JournalMethods {
+    /// The whole entry — path, frontmatter and body — as JSON.
+    pub fn entry_get(&self, p: EntryGetParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let path = self.with_state(|s| {
+                let conn = s.open_conn()?;
+                ops::resolve_entry(&p.entry, &conn).map_err(Into::into)
+            })?;
+            Ok(serde_json::to_string(&read_entry(&path)?)?)
+        })()
+        .map_err(|e| e.to_string())
+    }
+
+    /// The entry's path.
+    pub fn entry_resolve(&self, p: EntryResolveParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let path = self.with_state(|s| {
+                s.sync()?;
+                let conn = s.open_conn()?;
+                ops::resolve_entry(&p.entry, &conn).map_err(Into::into)
+            })?;
+            Ok(path.display().to_string())
+        })()
+        .map_err(|e| e.to_string())
+    }
+
+    /// Create an empty entry for an editor to fill in, and return its path.
+    pub fn entry_prepare(&self, p: EntryPrepareParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let path = self.with_state(|s| {
+                let parent = match &p.parent {
+                    Some(parent) => {
+                        s.sync()?;
+                        let conn = s.open_conn()?;
+                        ops::resolve_parent_id(&conn, Some(parent))?
+                    }
+                    None => None,
+                };
+                let path = ops::prepare_new_entry(&s.journal, parent)?;
+                if let Ok(conn) = s.open_conn() {
+                    let _ = cache::upsert_entry_from_path(&conn, &path);
+                }
+                Ok(path)
+            })?;
+            self.notify_write(std::slice::from_ref(&path));
+            Ok(path.display().to_string())
+        })()
+        .map_err(|e| e.to_string())
+    }
+
+    /// Write a whole entry back, normalize it (`entry_fix`), and return its
+    /// path, which the normalization may have changed.
+    pub fn entry_save(&self, p: EntrySaveParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let mut entry = p.entry;
+            let (old_path, final_path) = self.with_state(|s| {
+                ensure_inside(&s.journal, &entry.path)?;
+                let old_path = entry.path.clone();
+                write_entry(&mut entry)?;
+                let final_path = ops::fix_entry(&entry.path)?.unwrap_or_else(|| entry.path.clone());
+                if let Ok(conn) = s.open_conn() {
+                    let _ = cache::upsert_entry_from_path(&conn, &final_path);
+                }
+                Ok((old_path, final_path))
+            })?;
+            if old_path == final_path {
+                self.notify_write(std::slice::from_ref(&final_path));
+            } else {
+                self.notify_write(&[old_path, final_path.clone()]);
+            }
+            Ok(final_path.display().to_string())
+        })()
+        .map_err(|e| e.to_string())
+    }
+
+    /// Remove the cache files older versions left behind.
+    pub fn cache_clean(&self, _: EmptyParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let removed = self.with_state(|s| Ok(cache::clean_stale_files(&s.journal)?))?;
+            if removed.is_empty() {
+                return Ok("nothing to clean".to_owned());
+            }
+            Ok(removed
+                .iter()
+                .map(|(path, size)| format!("removed: {} ({})", path.display(), human_size(*size)))
+                .collect::<Vec<_>>()
+                .join("\n"))
+        })()
+        .map_err(|e| e.to_string())
+    }
+
+    /// The user config and the journal config, as their files hold them.
+    pub fn config_show(&self, _: EmptyParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let journal_config = self.with_state(|s| Ok(s.journal.config_path()))?;
+            let mut out = String::new();
+            for (heading, path) in [("user config", UserConfig::path()), ("journal config", journal_config)] {
+                out.push_str(&format!("## {heading}\npath: {}\n", path.display()));
+                match std::fs::read_to_string(&path) {
+                    Ok(raw) => out.push_str(raw.trim_end()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        out.push_str("(file not found — using defaults)")
+                    }
+                    Err(e) => return Err(e.into()),
+                }
+                out.push_str("\n\n");
+            }
+            Ok(out.trim_end().to_owned())
+        })()
+        .map_err(|e| e.to_string())
+    }
+
+    /// [`JournalSettings`] as JSON.
+    pub fn config_get(&self, _: EmptyParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let settings = self.with_state(|s| settings_of(&s.journal))?;
+            Ok(serde_json::to_string(&settings)?)
+        })()
+        .map_err(|e| e.to_string())
+    }
+
+    /// Change [`JournalSettings`]; returns them as they are now, as JSON. A
+    /// new `sync_interval_minutes` applies when the server next starts.
+    pub fn config_set(&self, p: ConfigSetParams) -> Result<String, String> {
+        (|| -> anyhow::Result<String> {
+            let settings = self.with_state(|s| {
+                if let Some(minutes) = p.sync_interval_minutes {
+                    let mut user = UserConfig::load()?;
+                    user.sync_interval_minutes = Some(minutes);
+                    user.save()?;
+                }
+                if p.duplicate_title.is_some() || !p.entries_dir.is_unchanged() {
+                    let mut config = s.journal.config()?;
+                    if let Some(policy) = p.duplicate_title {
+                        config.journal.duplicate_title = policy;
+                    }
+                    match p.entries_dir {
+                        UpdateOption::Set(dir) => config.journal.entries_dir = Some(dir),
+                        UpdateOption::Clear => config.journal.entries_dir = None,
+                        UpdateOption::Unchanged => {}
+                    }
+                    s.journal.save_config(&config)?;
+                }
+                settings_of(&s.journal)
+            })?;
+            Ok(serde_json::to_string(&settings)?)
+        })()
+        .map_err(|e| e.to_string())
+    }
+}
+
+fn settings_of(journal: &Journal) -> anyhow::Result<JournalSettings> {
+    let config = journal.config()?;
+    Ok(JournalSettings {
+        root: journal.root.clone(),
+        sync_interval_minutes: UserConfig::load()?.sync_interval_minutes,
+        duplicate_title: config.journal.duplicate_title,
+        entries_dir: config.journal.entries_dir,
+    })
+}
+
+/// Refuse a path outside the journal, or one that is not an existing file: a
+/// client hands `entry_save` the path `entry_get` gave it, and nothing else.
+fn ensure_inside(journal: &Journal, path: &std::path::Path) -> anyhow::Result<()> {
+    let root = journal.root.canonicalize()?;
+    let file = path
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+    if !file.is_file() || !file.starts_with(&root) {
+        anyhow::bail!("{} is not an entry of this journal", path.display());
+    }
+    Ok(())
+}
+
+fn human_size(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1_024 {
+        format!("{:.1} KB", bytes as f64 / 1_024.0)
+    } else {
+        format!("{bytes} B")
     }
 }
 

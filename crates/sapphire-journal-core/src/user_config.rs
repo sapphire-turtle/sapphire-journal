@@ -80,6 +80,17 @@ impl UserConfig {
         Ok(config)
     }
 
+    /// Write the config to [`UserConfig::path`], creating its directory.
+    pub fn save(&self) -> Result<()> {
+        let path = Self::path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = toml::to_string_pretty(self).map_err(|e| Error::InvalidConfig(e.to_string()))?;
+        std::fs::write(&path, content)?;
+        Ok(())
+    }
+
     fn apply_env_overrides(&mut self) {
         if let Ok(v) = std::env::var("SAPPHIRE_JOURNAL_SYNC_INTERVAL_MINUTES") {
             if let Ok(n) = v.parse::<u32>() {

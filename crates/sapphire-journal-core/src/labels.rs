@@ -45,6 +45,28 @@ pub enum EntryFlag {
 }
 
 impl EntryFlag {
+    /// Every flag, in declaration order.
+    pub const ALL: [EntryFlag; 13] = [
+        Self::Overdue,
+        Self::New,
+        Self::Updated,
+        Self::Event,
+        Self::EventClosed,
+        Self::Done,
+        Self::Cancelled,
+        Self::InProgress,
+        Self::Archived,
+        Self::Open,
+        Self::Note,
+        Self::Stale,
+        Self::Hidden,
+    ];
+
+    const NAMES: [&'static str; 13] = [
+        "overdue", "new", "updated", "event", "event_closed", "done", "cancelled",
+        "in_progress", "archived", "open", "note", "stale", "hidden",
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Overdue     => "overdue",
@@ -121,6 +143,16 @@ impl EntryFlag {
 impl serde::Serialize for EntryFlag {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for EntryFlag {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::ALL
+            .into_iter()
+            .find(|f| f.as_str() == s)
+            .ok_or_else(|| serde::de::Error::unknown_variant(&s, &Self::NAMES))
     }
 }
 

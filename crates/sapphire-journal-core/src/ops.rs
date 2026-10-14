@@ -424,28 +424,46 @@ impl serde::Serialize for MatchFlag {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for MatchFlag {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        const ALL: [MatchFlag; 7] = [
+            MatchFlag::TaskOverdue,
+            MatchFlag::TaskInProgress,
+            MatchFlag::TaskUnstarted,
+            MatchFlag::EventSpan,
+            MatchFlag::CreatedAt,
+            MatchFlag::UpdatedAt,
+            MatchFlag::ParentOfMatch,
+        ];
+        let s = String::deserialize(d)?;
+        ALL.into_iter()
+            .find(|f| f.as_str() == s)
+            .ok_or_else(|| serde::de::Error::custom(format!("unknown match flag `{s}`")))
+    }
+}
+
 // ── EntryListItem ─────────────────────────────────────────────────────────────
 
 /// A flat list item pairing an [`EntryHeader`] with its [`MatchFlag`]s.
 ///
 /// Serializes all entry fields at the top level, with `match_flags` omitted
 /// when there is no active filter (i.e. when `match_flags` is `None`).
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct EntryListItem {
     #[serde(flatten)]
     pub entry: EntryHeader,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub match_flags: Option<Vec<MatchFlag>>,
 }
 
 // ── tree ──────────────────────────────────────────────────────────────────────
 
 /// A node in an entry hierarchy returned by [`build_entry_tree`].
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct EntryTreeNode {
     #[serde(flatten)]
     pub entry: EntryHeader,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub match_flags: Vec<MatchFlag>,
     pub children: Vec<EntryTreeNode>,
 }
