@@ -9,14 +9,14 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        // A bare invocation *is* `serve`: what the service manager starts.
-        None | Some(Command::Framework(FrameworkCommand::Serve)) => {
+        // What the service manager starts.
+        Command::Framework(FrameworkCommand::Serve) => {
             sapphire_journal_core::init_app_context(AppKind::Server);
             runtime()?.block_on(serve::run())
         }
         // `mcp` among them: its stdout is the MCP stream, and the
         // framework's console log goes to stderr.
-        Some(Command::Framework(command)) => {
+        Command::Framework(command) => {
             sapphire_journal_core::init_app_context(AppKind::Cli);
             let code =
                 runtime()?.block_on(command.dispatch(serve::build_oneshot(), serve::VERSION))?;
@@ -26,9 +26,9 @@ fn main() -> Result<()> {
             Ok(())
         }
         // The journal's own verbs: requests to the running server.
-        Some(Command::Entry { action }) => commands::entry::run(&Server::new()?, action),
-        Some(Command::Cache { action }) => commands::cache::run(&Server::new()?, action),
-        Some(Command::Config { action }) => commands::config::run(&Server::new()?, action),
+        Command::Entry { action } => commands::entry::run(&Server::new()?, action),
+        Command::Cache { action } => commands::cache::run(&Server::new()?, action),
+        Command::Config { action } => commands::config::run(&Server::new()?, action),
     }
 }
 
