@@ -10,7 +10,7 @@
 use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::ServerInfo,
+    model::ServerConfig,
     tool, tool_handler, tool_router,
 };
 use sapphire_framework::ipc;
@@ -189,7 +189,7 @@ impl JournalTools {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for JournalTools {
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         let info = mcp::server_info(&self.ctx);
         let framework = info.instructions.clone().unwrap_or_default();
         info.with_instructions(format!(
