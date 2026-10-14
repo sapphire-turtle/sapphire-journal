@@ -59,7 +59,7 @@ fn split_frontmatter<'a>(_path: &Path, source: &'a str) -> Result<(Frontmatter, 
     let body = &rest[end + fence_len..];
     let body = body.trim_start_matches(['\n', '\r']);
 
-    let frontmatter: Frontmatter = serde_yaml::from_str(yaml)?;
+    let frontmatter: Frontmatter = sapphire_frontmatter::from_yaml(yaml)?;
     Ok((frontmatter, body))
 }
 
@@ -68,7 +68,7 @@ pub fn render_entry(entry: &Entry) -> String {
     let mut out = String::new();
 
     let yaml =
-        serde_yaml::to_string(&entry.frontmatter).expect("frontmatter serialization failed");
+        sapphire_frontmatter::to_yaml(&entry.frontmatter).expect("frontmatter serialization failed");
     out.push_str("---\n");
     out.push_str(&yaml);
     out.push_str("---\n");

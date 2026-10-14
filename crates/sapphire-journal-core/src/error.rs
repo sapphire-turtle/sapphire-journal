@@ -6,7 +6,7 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     #[error("Failed to parse frontmatter: {0}")]
-    FrontmatterParse(#[from] serde_yaml::Error),
+    FrontmatterParse(#[from] sapphire_frontmatter::Error),
 
     #[error("Invalid entry file: {0}")]
     InvalidEntry(String),

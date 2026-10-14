@@ -16,7 +16,6 @@ text-input = []
 
 [dependencies]
 serde.workspace = true
-serde_yaml = "0.9"
 toml.workspace = true
 chrono.workspace = true
 indexmap.workspace = true
@@ -29,6 +28,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 sapphire-workspace.workspace = true
 # `file_stamp`, for the entry cache's change detection.
 sapphire-track.workspace = true
+# Frontmatter YAML: the framework reads and writes it, not `serde_yaml`.
+sapphire-frontmatter.workspace = true
 grain-id = { version = "0.15", features = ["serde", "rusqlite", "schemars"] }
 
 [dev-dependencies]
