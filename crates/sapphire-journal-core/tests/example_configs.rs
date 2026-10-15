@@ -7,7 +7,8 @@ use sapphire_journal_core::user_config::UserConfig;
 #[test]
 fn user_config_example_parses() {
     let raw = include_str!("../../../docs/config/user-config.toml");
-    toml::from_str::<UserConfig>(raw).expect("docs/config/user-config.toml must parse as UserConfig");
+    toml::from_str::<UserConfig>(raw)
+        .expect("docs/config/user-config.toml must parse as UserConfig");
 }
 
 #[test]

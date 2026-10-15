@@ -17,9 +17,9 @@ use sapphire_framework::ipc;
 use sapphire_framework::mcp::{self, McpService, ToolContext};
 use serde::Serialize;
 
-use crate::methods::{
-    EmptyParams, EntryCheckParams, EntryFixParams, EntryListParams, EntryModifyParams,
-    EntryNewParams, EntryRemoveParams, EntryShowParams, EntryTreeParams, names,
+use sapphire_journal_api::{
+    self as api, EmptyParams, EntryCheckParams, EntryFixParams, EntryListParams, EntryModifyParams,
+    EntryNewParams, EntryRemoveParams, EntryShowParams, EntryTreeParams,
 };
 
 /// How the journal answers MCP: [`JournalTools`], one per session.
@@ -81,7 +81,7 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EntryListParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_LIST, p).await
+        self.call(api::ENTRY_LIST, p).await
     }
 
     #[tool(
@@ -94,7 +94,7 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EntryTreeParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_TREE, p).await
+        self.call(api::ENTRY_TREE, p).await
     }
 
     #[tool(
@@ -105,7 +105,7 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EntryShowParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_SHOW, p).await
+        self.call(api::ENTRY_SHOW, p).await
     }
 
     #[tool(description = "Create a new journal entry")]
@@ -113,7 +113,7 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EntryNewParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_NEW, p).await
+        self.call(api::ENTRY_NEW, p).await
     }
 
     #[tool(description = "Update frontmatter fields of an existing journal entry")]
@@ -121,7 +121,7 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EntryModifyParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_MODIFY, p).await
+        self.call(api::ENTRY_MODIFY, p).await
     }
 
     #[tool(
@@ -133,17 +133,19 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EntryCheckParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_CHECK, p).await
+        self.call(api::ENTRY_CHECK, p).await
     }
 
-    #[tool(description = "Normalize an entry: sync closed_at, update updated_at, and rename the file \
+    #[tool(
+        description = "Normalize an entry: sync closed_at, update updated_at, and rename the file \
         to match its frontmatter ID and title/slug. \
-        Reports the rename or confirms the filename is already correct.")]
+        Reports the rename or confirms the filename is already correct."
+    )]
     pub async fn entry_fix(
         &self,
         Parameters(p): Parameters<EntryFixParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_FIX, p).await
+        self.call(api::ENTRY_FIX, p).await
     }
 
     #[tool(description = "Delete an entry file from the journal")]
@@ -151,7 +153,7 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EntryRemoveParams>,
     ) -> Result<String, String> {
-        self.call(names::ENTRY_REMOVE, p).await
+        self.call(api::ENTRY_REMOVE, p).await
     }
 
     #[tool(
@@ -162,17 +164,19 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EmptyParams>,
     ) -> Result<String, String> {
-        self.call(names::CACHE_INFO, p).await
+        self.call(api::CACHE_INFO, p).await
     }
 
-    #[tool(description = "Incrementally sync the entry cache with the current journal state. \
+    #[tool(
+        description = "Incrementally sync the entry cache with the current journal state. \
         Re-indexes files whose mtime has changed and removes entries for deleted files. \
-        Returns the number of entries in the cache after sync.")]
+        Returns the number of entries in the cache after sync."
+    )]
     pub async fn cache_sync(
         &self,
         Parameters(p): Parameters<EmptyParams>,
     ) -> Result<String, String> {
-        self.call(names::CACHE_SYNC, p).await
+        self.call(api::CACHE_SYNC, p).await
     }
 
     #[tool(description = "Rebuild the entry cache from scratch. \
@@ -183,7 +187,7 @@ impl JournalTools {
         &self,
         Parameters(p): Parameters<EmptyParams>,
     ) -> Result<String, String> {
-        self.call(names::CACHE_REBUILD, p).await
+        self.call(api::CACHE_REBUILD, p).await
     }
 }
 

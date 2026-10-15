@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Subcommand;
-use sapphire_journal_mcp::methods::{EmptyParams, names};
+use sapphire_journal_api::{self as api, EmptyParams};
 
 use crate::client::Server;
 
@@ -29,10 +29,10 @@ pub enum CacheCommand {
 /// Run a cache command on the server, which owns the cache.
 pub fn run(server: &Server, cmd: CacheCommand) -> Result<()> {
     let method = match cmd {
-        CacheCommand::Info => names::CACHE_INFO,
-        CacheCommand::Sync => names::CACHE_SYNC,
-        CacheCommand::Rebuild => names::CACHE_REBUILD,
-        CacheCommand::Clean => names::CACHE_CLEAN,
+        CacheCommand::Info => api::CACHE_INFO,
+        CacheCommand::Sync => api::CACHE_SYNC,
+        CacheCommand::Rebuild => api::CACHE_REBUILD,
+        CacheCommand::Clean => api::CACHE_CLEAN,
     };
     println!("{}", server.call(method, EmptyParams {})?);
     Ok(())

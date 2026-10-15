@@ -1,4 +1,10 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
+use sapphire_framework::backend::{IpcBackend, SearchMode, WorkspaceBackend as _};
+use sapphire_framework::ipc::Endpoint;
+use sapphire_journal_api::{
+    self as api, EntryCheckParams, EntryFixParams, EntryGetParams, EntryListParams,
+    EntryModifyParams, EntryNewParams, EntryPrepareParams, EntryRemoveParams, EntryResolveParams,
+};
 use sapphire_journal_core::{
     entry::Entry,
     entry_ref::EntryRef,
@@ -7,12 +13,6 @@ use sapphire_journal_core::{
     period::{parse_datetime, parse_datetime_end},
     text_input::filter as core_filter,
 };
-use sapphire_journal_mcp::methods::{
-    EntryCheckParams, EntryFixParams, EntryGetParams, EntryListParams, EntryModifyParams,
-    EntryNewParams, EntryPrepareParams, EntryRemoveParams, EntryResolveParams, names,
-};
-use sapphire_framework::backend::{IpcBackend, SearchMode, WorkspaceBackend as _};
-use sapphire_framework::ipc::Endpoint;
 
 use chrono::NaiveDateTime;
 use clap::{Args, Subcommand};
@@ -390,34 +390,48 @@ impl EntryFields {
 /// journal's files and its cache.
 pub fn run(server: &Server, cmd: EntryCommand) -> Result<()> {
     match cmd {
-        EntryCommand::List { filter, json, emoji, nerd } => {
+        EntryCommand::List {
+            filter,
+            json,
+            emoji,
+            nerd,
+        } => {
             let params = list_params(&filter)?;
             if json {
-                println!("{}", server.call(names::ENTRY_LIST, params)?);
+                println!("{}", server.call(api::ENTRY_LIST, params)?);
                 return Ok(());
             }
-            let items: Vec<EntryListItem> = server.read(names::ENTRY_LIST, params)?;
+            let items: Vec<EntryListItem> = server.read(api::ENTRY_LIST, params)?;
             print_entries(&items, DisplayMode::from_flags(emoji, nerd));
             Ok(())
         }
-        EntryCommand::Tree { filter, json, emoji, nerd } => {
+        EntryCommand::Tree {
+            filter,
+            json,
+            emoji,
+            nerd,
+        } => {
             let params = list_params(&filter)?;
             if json {
-                println!("{}", server.call(names::ENTRY_TREE, params)?);
+                println!("{}", server.call(api::ENTRY_TREE, params)?);
                 return Ok(());
             }
-            let roots: Vec<EntryTreeNode> = server.read(names::ENTRY_TREE, params)?;
+            let roots: Vec<EntryTreeNode> = server.read(api::ENTRY_TREE, params)?;
             print_tree(&roots, DisplayMode::from_flags(emoji, nerd));
             Ok(())
         }
         EntryCommand::Show { entry } => {
-            let entry: Entry =
-                server.read(names::ENTRY_GET, EntryGetParams { entry: EntryRef::parse(&entry) })?;
+            let entry: Entry = server.read(
+                api::ENTRY_GET,
+                EntryGetParams {
+                    entry: EntryRef::parse(&entry),
+                },
+            )?;
             show(&entry);
             Ok(())
         }
         EntryCommand::New { fields } => {
-            println!("{}", server.call(names::ENTRY_NEW, fields.into_new_params())?);
+            println!("{}", server.call(api::ENTRY_NEW, fields.into_new_params())?);
             Ok(())
         }
         EntryCommand::Edit { entry, new } => {
@@ -429,60 +443,85 @@ pub fn run(server: &Server, cmd: EntryCommand) -> Result<()> {
                 bail!("specify an entry or use --new to create one")
             }
         }
-        EntryCommand::Modify { entry, fields, no_parent } => {
+        EntryCommand::Modify {
+            entry,
+            fields,
+            no_parent,
+        } => {
             if fields.is_empty() && !no_parent {
                 bail!("nothing to update — specify at least one field");
             }
             let params = fields.into_modify_params(EntryRef::parse(&entry), no_parent);
-            println!("{}", server.call(names::ENTRY_MODIFY, params)?);
+            println!("{}", server.call(api::ENTRY_MODIFY, params)?);
             Ok(())
         }
         EntryCommand::Check { entry } => {
-            let params = EntryCheckParams { entry: EntryRef::parse(&entry) };
-            println!("{}", server.call(names::ENTRY_CHECK, params)?);
+            let params = EntryCheckParams {
+                entry: EntryRef::parse(&entry),
+            };
+            println!("{}", server.call(api::ENTRY_CHECK, params)?);
             Ok(())
         }
         EntryCommand::Fix { entry } => {
-            let params = EntryFixParams { entry: EntryRef::parse(&entry) };
-            println!("{}", server.call(names::ENTRY_FIX, params)?);
+            let params = EntryFixParams {
+                entry: EntryRef::parse(&entry),
+            };
+            println!("{}", server.call(api::ENTRY_FIX, params)?);
             Ok(())
         }
         EntryCommand::Path { entry, new, parent } => {
             let path = if new {
                 let parent = parent.as_deref().map(EntryRef::parse);
-                server.call(names::ENTRY_PREPARE, EntryPrepareParams { parent })?
+                server.call(api::ENTRY_PREPARE, EntryPrepareParams { parent })?
             } else {
-                let entry = EntryRef::parse(entry.as_deref().expect("clap requires it without --new"));
-                server.call(names::ENTRY_RESOLVE, EntryResolveParams { entry })?
+                let entry =
+                    EntryRef::parse(entry.as_deref().expect("clap requires it without --new"));
+                server.call(api::ENTRY_RESOLVE, EntryResolveParams { entry })?
             };
             println!("{path}");
             Ok(())
         }
         EntryCommand::Remove { entry } => {
-            let params = EntryRemoveParams { entry: EntryRef::parse(&entry) };
-            println!("{}", server.call(names::ENTRY_REMOVE, params)?);
+            let params = EntryRemoveParams {
+                entry: EntryRef::parse(&entry),
+            };
+            println!("{}", server.call(api::ENTRY_REMOVE, params)?);
             Ok(())
         }
-        EntryCommand::Search { query, semantic, limit } => search(&query, semantic, limit),
+        EntryCommand::Search {
+            query,
+            semantic,
+            limit,
+        } => search(&query, semantic, limit),
     }
 }
 
 // ── display mode ──────────────────────────────────────────────────────────────
 
 #[derive(Copy, Clone)]
-enum DisplayMode { Initials, Emoji, Nerd }
+enum DisplayMode {
+    Initials,
+    Emoji,
+    Nerd,
+}
 
 impl DisplayMode {
     fn from_flags(emoji: bool, nerd: bool) -> Self {
-        if emoji { Self::Emoji } else if nerd { Self::Nerd } else { Self::Initials }
+        if emoji {
+            Self::Emoji
+        } else if nerd {
+            Self::Nerd
+        } else {
+            Self::Initials
+        }
     }
 }
 
 fn render_slot(flags: &[EntryFlag], mode: DisplayMode) -> String {
     let absent_fresh = match mode {
         DisplayMode::Initials => "·",
-        DisplayMode::Emoji    => "・",
-        DisplayMode::Nerd     => " ",
+        DisplayMode::Emoji => "・",
+        DisplayMode::Nerd => " ",
     };
     let (fresh, type_flag) = match flags.len() {
         0 => (absent_fresh.to_owned(), EntryFlag::Note),
@@ -490,16 +529,16 @@ fn render_slot(flags: &[EntryFlag], mode: DisplayMode) -> String {
         _ => {
             let f = match mode {
                 DisplayMode::Initials => flags[0].to_initial().to_string(),
-                DisplayMode::Emoji    => flags[0].to_emoji().to_owned(),
-                DisplayMode::Nerd     => flags[0].to_nerd().to_owned(),
+                DisplayMode::Emoji => flags[0].to_emoji().to_owned(),
+                DisplayMode::Nerd => flags[0].to_nerd().to_owned(),
             };
             (f, flags[1])
         }
     };
     let typ = match mode {
         DisplayMode::Initials => type_flag.to_initial().to_string(),
-        DisplayMode::Emoji    => type_flag.to_emoji().to_owned(),
-        DisplayMode::Nerd     => type_flag.to_nerd().to_owned(),
+        DisplayMode::Emoji => type_flag.to_emoji().to_owned(),
+        DisplayMode::Nerd => type_flag.to_nerd().to_owned(),
     };
     format!("{fresh}{typ}")
 }
@@ -536,7 +575,11 @@ fn print_tree(roots: &[EntryTreeNode], mode: DisplayMode) {
             println!("{prefix}{connector} {slot}  {id}  {title}");
         }
         let child_prefix = if prefix.is_empty() {
-            if is_last { "   ".to_owned() } else { "│  ".to_owned() }
+            if is_last {
+                "   ".to_owned()
+            } else {
+                "│  ".to_owned()
+            }
         } else {
             format!("{}{}", prefix, if is_last { "   " } else { "│  " })
         };
@@ -555,7 +598,7 @@ fn print_tree(roots: &[EntryTreeNode], mode: DisplayMode) {
 // ── show ──────────────────────────────────────────────────────────────────────
 
 fn show(entry: &Entry) {
-    use sapphire_journal_core::labels::{entry_flags, STALE_AFTER_DAYS_DEFAULT};
+    use sapphire_journal_core::labels::{STALE_AFTER_DAYS_DEFAULT, entry_flags};
 
     let fm_view = sapphire_journal_core::entry::FrontmatterView::from(entry.frontmatter.clone());
     let fm = &fm_view;
@@ -591,7 +634,11 @@ fn show(entry: &Entry) {
         }
     }
     if let Some(event) = &fm.event {
-        println!("event:    {} – {}", event.start.format("%Y-%m-%d"), event.end.format("%Y-%m-%d"));
+        println!(
+            "event:    {} – {}",
+            event.start.format("%Y-%m-%d"),
+            event.end.format("%Y-%m-%d")
+        );
     }
     println!();
     print!("{}", entry.body);
@@ -604,9 +651,19 @@ fn show(entry: &Entry) {
 // entry afterwards (`entry_fix`), which also brings its cache row up to date.
 
 fn edit(server: &Server, entry: &str) -> Result<()> {
-    let path = server.call(names::ENTRY_RESOLVE, EntryResolveParams { entry: EntryRef::parse(entry) })?;
+    let path = server.call(
+        api::ENTRY_RESOLVE,
+        EntryResolveParams {
+            entry: EntryRef::parse(entry),
+        },
+    )?;
     run_editor(Path::new(&path))?;
-    let fixed = server.call(names::ENTRY_FIX, EntryFixParams { entry: EntryRef::Path(path.clone().into()) })?;
+    let fixed = server.call(
+        api::ENTRY_FIX,
+        EntryFixParams {
+            entry: EntryRef::Path(path.clone().into()),
+        },
+    )?;
     println!("updated: {path}");
     if fixed.starts_with("renamed:") {
         println!("{fixed}");
@@ -615,13 +672,13 @@ fn edit(server: &Server, entry: &str) -> Result<()> {
 }
 
 fn edit_new(server: &Server) -> Result<()> {
-    let path = server.call(names::ENTRY_PREPARE, EntryPrepareParams::default())?;
+    let path = server.call(api::ENTRY_PREPARE, EntryPrepareParams::default())?;
     let entry = EntryRef::Path(path.clone().into());
     if let Err(err) = run_editor(Path::new(&path)) {
-        let _ = server.call(names::ENTRY_REMOVE, EntryRemoveParams { entry });
+        let _ = server.call(api::ENTRY_REMOVE, EntryRemoveParams { entry });
         return Err(err);
     }
-    let fixed = server.call(names::ENTRY_FIX, EntryFixParams { entry })?;
+    let fixed = server.call(api::ENTRY_FIX, EntryFixParams { entry })?;
     println!("created: {path}");
     if fixed.starts_with("renamed:") {
         println!("{fixed}");
@@ -644,7 +701,11 @@ fn run_editor(path: &Path) -> Result<()> {
 // ── search ────────────────────────────────────────────────────────────────────
 
 fn search(query: &str, semantic: bool, limit: usize) -> Result<()> {
-    let mode = if semantic { SearchMode::Semantic } else { SearchMode::Fts };
+    let mode = if semantic {
+        SearchMode::Semantic
+    } else {
+        SearchMode::Fts
+    };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;

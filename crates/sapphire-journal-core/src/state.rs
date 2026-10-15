@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::{error::Result, journal::Journal, JournalState};
+use crate::{JournalState, error::Result, journal::Journal};
 
 /// Open a [`JournalState`] for the journal at `root`.
 pub fn open_state(root: &Path) -> Result<JournalState> {

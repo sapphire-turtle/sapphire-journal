@@ -1,31 +1,49 @@
 [workspace]
+# Only the CLI makes the `v{version}` tag and GitHub release, and the desktop app
+# its `desktop-v{version}` ones; the libraries are published without tags.
 changelog_update = true
-git_release_enable = true
+dependencies_update = true
+publish = true
+release = true
+git_release_enable = false
+git_tag_enable = false
+# Publish only when a release PR is merged, not on every push to main that
+# carries an unpublished version.
+release_always = false
+pr_branch_prefix = "release-plz/"
+pr_labels = ["release"]
+
+# The CLI, the server and the MCP server. Published as `sapphire-journal-cli`
+# for 0.12.0, so this name resumes at 0.13.0.
+[[package]]
+name = "sapphire-journal"
 git_tag_enable = true
+git_release_enable = true
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
 
 [[package]]
 name = "sapphire-journal-core"
-git_tag_name = "core-v{{ version }}"
-git_release_name = "core-v{{ version }}"
-
-[[package]]
-name = "sapphire-journal-cli"
-git_tag_name = "cli-v{{ version }}"
-git_release_name = "cli-v{{ version }}"
 
 [[package]]
 name = "sapphire-journal-mcp"
-git_tag_name = "mcp-v{{ version }}"
-git_release_name = "mcp-v{{ version }}"
 
-# GitHub-release-only binary crate. `release = true` is load-bearing:
-# release-plz silently skips any crate whose Cargo.toml has
-# `publish = false` unless this is set, so without it no `desktop-v*`
-# tag or GH release would ever be created. See sapphire-agent's
-# release-plz.toml for the original write-up of this behaviour.
+# The server's own API carries its own version: its major is the handshake's
+# `app_api` (`API_VERSION`), so it is released only when the API breaks — like
+# sapphire-framework-bridge-api and -server-api.
+[[package]]
+name = "sapphire-journal-api"
+
+# GitHub-release-only binary crate. It is not published, so its versions live in
+# its git tags; `git_only = true` is load-bearing: release-plz silently skips a
+# crate whose Cargo.toml has `publish = false` unless it is set (`release = true`
+# alone no longer does it).
 [[package]]
 name = "sapphire-journal-desktop"
+git_only = true
+# Overrides the workspace's `publish = true`, which `git_only` refuses.
+publish = false
+git_tag_enable = true
+git_release_enable = true
 git_tag_name = "desktop-v{{ version }}"
 git_release_name = "desktop-v{{ version }}"
-publish = false
-release = true

@@ -8,16 +8,16 @@ use std::time::Duration;
 
 use sapphire_framework::backend::protocol as proto;
 use sapphire_framework::ipc::{self, ClientInfo, Endpoint};
+use sapphire_journal_api::{
+    self as api, ConfigSetParams, EmptyParams, EntryGetParams, EntryListParams, EntryPrepareParams,
+    EntrySaveParams, JournalSettings,
+};
 use sapphire_journal_core::entry::Entry;
 use sapphire_journal_core::entry_ref::EntryRef;
 use sapphire_journal_core::journal::DuplicateTitlePolicy;
 use sapphire_journal_core::ops::{EntryListItem, EntryTreeNode, UpdateOption};
 use sapphire_journal_core::{AppKind, JOURNAL_CTX};
 use sapphire_journal_mcp::JournalClient;
-use sapphire_journal_mcp::methods::{
-    ConfigSetParams, EmptyParams, EntryGetParams, EntryListParams, EntryPrepareParams,
-    EntrySaveParams, JournalSettings, names,
-};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn clients_read_and_write_the_journal_through_the_server() {
@@ -39,15 +39,24 @@ async fn clients_read_and_write_the_journal_through_the_server() {
     let endpoint = Endpoint::in_dir(JOURNAL_CTX.app_name, tmp.path().join("run"));
 
     let client = JournalClient::new(JOURNAL_CTX.app_name, "cli", "0.0.0", endpoint.clone());
-    let err = client.call(names::CACHE_INFO, EmptyParams {}).await.unwrap_err();
-    assert!(err.contains("no sapphire-journal server is running"), "got: {err}");
+    let err = client
+        .call(api::CACHE_INFO, EmptyParams {})
+        .await
+        .unwrap_err();
+    assert!(
+        err.contains("no sapphire-journal server is running"),
+        "got: {err}"
+    );
 
     let (server, _journal) = sapphire_journal::serve::build();
     let server = server.endpoint(endpoint.clone());
     let task = tokio::spawn(async move { server.run().await.unwrap() });
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     while !ipc::probe(&endpoint).await.unwrap() {
-        assert!(tokio::time::Instant::now() < deadline, "the server never listened");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the server never listened"
+        );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
@@ -66,37 +75,59 @@ async fn clients_read_and_write_the_journal_through_the_server() {
     let journal = tmp.path().join("journal");
     std::fs::create_dir_all(&journal).unwrap();
     let _: proto::WorkspaceInitResult = framework
-        .call(proto::WORKSPACE_INIT, proto::WorkspaceInitParams { dir: journal.clone() })
+        .call(
+            proto::WORKSPACE_INIT,
+            proto::WorkspaceInitParams {
+                dir: journal.clone(),
+            },
+        )
         .await
         .unwrap();
 
     // A new entry, read back whole, changed and saved: the desktop's editor.
     let path = client
-        .call(names::ENTRY_PREPARE, EntryPrepareParams::default())
+        .call(api::ENTRY_PREPARE, EntryPrepareParams::default())
         .await
         .expect("entry_prepare");
     let mut entry: Entry = client
-        .read(names::ENTRY_GET, EntryGetParams { entry: EntryRef::Path(path.clone().into()) })
+        .read(
+            api::ENTRY_GET,
+            EntryGetParams {
+                entry: EntryRef::Path(path.clone().into()),
+            },
+        )
         .await
         .expect("entry_get parses");
     entry.frontmatter.title = "Written Through The Server".into();
     entry.frontmatter.tags = vec!["ipc".into()];
     entry.body = "hello\n".into();
     let saved = client
-        .call(names::ENTRY_SAVE, EntrySaveParams { entry })
+        .call(api::ENTRY_SAVE, EntrySaveParams { entry })
         .await
         .expect("entry_save");
     assert_ne!(saved, path, "the title renames the file");
-    assert!(saved.ends_with("_written_through_the_server.md"), "got: {saved}");
-    assert!(!std::path::Path::new(&path).exists(), "the old name is gone");
+    assert!(
+        saved.ends_with("_written_through_the_server.md"),
+        "got: {saved}"
+    );
+    assert!(
+        !std::path::Path::new(&path).exists(),
+        "the old name is gone"
+    );
 
     // A child, so the tree and the list carry `parent_id`.
-    let file_name = std::path::Path::new(&saved).file_name().unwrap().to_str().unwrap();
+    let file_name = std::path::Path::new(&saved)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
     let parent_id = file_name.split('_').next().unwrap().to_owned();
     client
         .call(
-            names::ENTRY_PREPARE,
-            EntryPrepareParams { parent: Some(EntryRef::parse(&format!("@{parent_id}"))) },
+            api::ENTRY_PREPARE,
+            EntryPrepareParams {
+                parent: Some(EntryRef::parse(&format!("@{parent_id}"))),
+            },
         )
         .await
         .expect("entry_prepare with a parent");
@@ -106,7 +137,10 @@ async fn clients_read_and_write_the_journal_through_the_server() {
         include_hidden: Some(true),
         ..Default::default()
     };
-    let items: Vec<EntryListItem> = client.read(names::ENTRY_LIST, &all).await.expect("entry_list parses");
+    let items: Vec<EntryListItem> = client
+        .read(api::ENTRY_LIST, &all)
+        .await
+        .expect("entry_list parses");
     assert_eq!(items.len(), 2);
     let saved_item = items
         .iter()
@@ -114,19 +148,30 @@ async fn clients_read_and_write_the_journal_through_the_server() {
         .expect("the saved entry is listed");
     assert_eq!(saved_item.entry.frontmatter.tags, ["ipc"]);
     assert!(
-        items.iter().any(|i| i.entry.frontmatter.parent_id.map(|p| p.to_string()) == Some(parent_id.clone())),
+        items.iter().any(
+            |i| i.entry.frontmatter.parent_id.map(|p| p.to_string()) == Some(parent_id.clone())
+        ),
         "the child's parent_id comes through"
     );
-    let roots: Vec<EntryTreeNode> = client.read(names::ENTRY_TREE, &all).await.expect("entry_tree parses");
+    let roots: Vec<EntryTreeNode> = client
+        .read(api::ENTRY_TREE, &all)
+        .await
+        .expect("entry_tree parses");
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].children.len(), 1);
 
     // Settings: written back to the marker's config.toml.
-    let settings: JournalSettings = client.read(names::CONFIG_GET, EmptyParams {}).await.expect("config_get");
-    assert_eq!(settings.root.canonicalize().unwrap(), journal.canonicalize().unwrap());
+    let settings: JournalSettings = client
+        .read(api::CONFIG_GET, EmptyParams {})
+        .await
+        .expect("config_get");
+    assert_eq!(
+        settings.root.canonicalize().unwrap(),
+        journal.canonicalize().unwrap()
+    );
     let settings: JournalSettings = client
         .read(
-            names::CONFIG_SET,
+            api::CONFIG_SET,
             ConfigSetParams {
                 duplicate_title: Some(DuplicateTitlePolicy::Allow),
                 entries_dir: UpdateOption::Clear,
@@ -140,7 +185,10 @@ async fn clients_read_and_write_the_journal_through_the_server() {
     let config = std::fs::read_to_string(journal.join(".sapphire-journal/config.toml")).unwrap();
     assert!(config.contains("duplicate_title = \"allow\""), "{config}");
 
-    let cleaned = client.call(names::CACHE_CLEAN, EmptyParams {}).await.expect("cache_clean");
+    let cleaned = client
+        .call(api::CACHE_CLEAN, EmptyParams {})
+        .await
+        .expect("cache_clean");
     assert_eq!(cleaned, "nothing to clean");
 
     let _: serde_json::Value = framework

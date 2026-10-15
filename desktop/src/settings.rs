@@ -55,7 +55,9 @@ pub enum RightTab {
 impl Settings {
     /// `<data dir>/sapphire-journal/settings.toml`
     pub fn path() -> PathBuf {
-        sapphire_journal_core::JOURNAL_CTX.data_dir().join("settings.toml")
+        sapphire_journal_core::JOURNAL_CTX
+            .data_dir()
+            .join("settings.toml")
     }
 
     /// Load the settings from disk, returning defaults if the file does not exist.

@@ -72,28 +72,32 @@ event:
 
 ## インストール
 
-### Linux / macOS
+### インストールスクリプト
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fluo10/sapphire-journal/main/install.sh | sh
+# Linux, macOS
+curl -fsSL https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/main/install/install.sh | sh -s -- journal
 ```
-
-### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/fluo10/sapphire-journal/main/desktop/install.ps1 | iex
+# Windows
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/main/install/install.ps1))) journal
 ```
+
+`sapphire-journal` と、同期に使う `sapphire-bridge` を `~/.local/bin` にインストールします。
+デスクトップアプリも入れるときは `journal-desktop` を加えてください。オプションは
+[インストールスクリプトの README](https://github.com/sapphire-turtle/sapphire-framework/tree/main/install/README.ja.md) を参照してください。
 
 ### cargo-binstall
 
 ```sh
-cargo binstall sapphire-journal-cli
+cargo binstall sapphire-journal
 ```
 
 ### ソースから
 
 ```sh
-cargo install sapphire-journal-cli
+cargo install sapphire-journal
 ```
 
 ## CLIの使い方
@@ -134,8 +138,9 @@ sapphire-journal/
 
 | コンポーネント | ライセンス |
 |-----------|---------|
+| `sapphire-journal-api` | MIT OR Apache-2.0 |
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
-| `sapphire-journal-cli` | MIT OR Apache-2.0 |
+| `sapphire-journal` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later、App Storeマーケットプレイス例外付き |
 

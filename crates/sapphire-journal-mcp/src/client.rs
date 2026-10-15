@@ -7,12 +7,11 @@
 
 use std::sync::Arc;
 
-use sapphire_framework::backend::protocol::API_VERSION;
 use sapphire_framework::ipc::{self, Client, ClientInfo, Endpoint};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::APP_API;
+use sapphire_journal_api::{self as api, server};
 
 pub struct JournalClient {
     app: &'static str,
@@ -86,8 +85,8 @@ impl JournalClient {
         let info = ClientInfo {
             kind: self.kind.to_owned(),
             version: self.version.to_owned(),
-            api: API_VERSION,
-            app_api: Some(APP_API),
+            api: server::API_VERSION,
+            app_api: Some(api::API_VERSION),
             pid: std::process::id(),
         };
         let (client, _) = ipc::connect_or_absent(&self.endpoint, self.app, info)

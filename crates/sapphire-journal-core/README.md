@@ -1,6 +1,6 @@
 # sapphire-journal-core
 
-Core library for [sapphire-journal](https://github.com/fluo10/sapphire-journal) — a Markdown-based task and note manager.
+Core library for [sapphire-journal](https://github.com/sapphire-turtle/sapphire-journal) — a Markdown-based task and note manager.
 
 ## What this crate provides
 

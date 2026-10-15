@@ -2,7 +2,7 @@
 
 > Language: **English** | [日本語](README.ja.md)
 
-A task, event and note management app built on [sapphire-framework](https://github.com/fluo10/sapphire-framework) — file-based, local-first, made for human-agent collaboration.
+A task, event and note management app built on [sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework) — file-based, local-first, made for human-agent collaboration.
 
 ## Concept
 
@@ -74,28 +74,32 @@ event:
 
 ## Installation
 
-### Linux / macOS
+### Install script
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fluo10/sapphire-journal/main/install.sh | sh
+# Linux, macOS
+curl -fsSL https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/main/install/install.sh | sh -s -- journal
 ```
-
-### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/fluo10/sapphire-journal/main/install.ps1 | iex
+# Windows
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/main/install/install.ps1))) journal
 ```
+
+This installs `sapphire-journal` together with `sapphire-bridge`, which it syncs
+through, into `~/.local/bin`. Add `journal-desktop` for the desktop app. See the
+[install script's README](https://github.com/sapphire-turtle/sapphire-framework/tree/main/install) for the options.
 
 ### cargo-binstall
 
 ```sh
-cargo binstall sapphire-journal-cli
+cargo binstall sapphire-journal
 ```
 
 ### From source
 
 ```sh
-cargo install sapphire-journal-cli
+cargo install sapphire-journal
 ```
 
 ## CLI usage
@@ -146,8 +150,9 @@ This repository contains components under different licenses:
 
 | Component | License |
 |-----------|---------|
+| `sapphire-journal-api` | MIT OR Apache-2.0 |
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
-| `sapphire-journal-cli` | MIT OR Apache-2.0 |
+| `sapphire-journal` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later, with [App Store marketplace exception](desktop/LICENSE.App-Store-Exception) |
 

@@ -12,149 +12,12 @@ use chrono::{Duration, Local, NaiveDateTime};
 
 use crate::entry::{EventMetaView, TaskMetaView};
 
-/// A computed flag describing an entry's type or freshness state.
-///
-/// Serializes to its string representation via [`EntryFlag::as_str`].
+pub use sapphire_journal_api::EntryFlag;
+
 /// Default stale threshold in days, used when the journal config does not set
 /// `stale_after_days`. Also the display-time threshold used when constructing
 /// [`EntryHeader`] flags directly.
 pub const STALE_AFTER_DAYS_DEFAULT: u64 = 30;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntryFlag {
-    // Freshness / urgency (slot 1)
-    Overdue,
-    New,
-    Updated,
-    // Entry type (slot 2)
-    Event,
-    /// Past event whose `end` timestamp is before the current time.
-    EventClosed,
-    Done,
-    Cancelled,
-    InProgress,
-    Archived,
-    Open,
-    Note,
-    // Orthogonal flags (appended after the slot-1/slot-2 flags)
-    /// Incomplete task (`closed_at` absent) whose `updated_at` is older than the
-    /// configured `stale_after_days` threshold.
-    Stale,
-    /// Entry explicitly marked `hidden: true` in its frontmatter.
-    Hidden,
-}
-
-impl EntryFlag {
-    /// Every flag, in declaration order.
-    pub const ALL: [EntryFlag; 13] = [
-        Self::Overdue,
-        Self::New,
-        Self::Updated,
-        Self::Event,
-        Self::EventClosed,
-        Self::Done,
-        Self::Cancelled,
-        Self::InProgress,
-        Self::Archived,
-        Self::Open,
-        Self::Note,
-        Self::Stale,
-        Self::Hidden,
-    ];
-
-    const NAMES: [&'static str; 13] = [
-        "overdue", "new", "updated", "event", "event_closed", "done", "cancelled",
-        "in_progress", "archived", "open", "note", "stale", "hidden",
-    ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Overdue     => "overdue",
-            Self::New         => "new",
-            Self::Updated     => "updated",
-            Self::Event       => "event",
-            Self::EventClosed => "event_closed",
-            Self::Done        => "done",
-            Self::Cancelled   => "cancelled",
-            Self::InProgress  => "in_progress",
-            Self::Archived    => "archived",
-            Self::Open        => "open",
-            Self::Note        => "note",
-            Self::Stale       => "stale",
-            Self::Hidden      => "hidden",
-        }
-    }
-
-    pub fn to_emoji(self) -> &'static str {
-        match self {
-            Self::Overdue     => "⏰",
-            Self::New         => "🆕",
-            Self::Updated     => "✏️",
-            Self::Event       => "📅",
-            Self::EventClosed => "🗓️",
-            Self::Done        => "✅",
-            Self::Cancelled   => "❌",
-            Self::InProgress  => "🔄",
-            Self::Archived    => "📦",
-            Self::Open        => "⬜",
-            Self::Note        => "📝",
-            Self::Stale       => "🕰️",
-            Self::Hidden      => "🙈",
-        }
-    }
-
-    pub fn to_nerd(self) -> &'static str {
-        match self {
-            Self::Overdue     => "󱦟",
-            Self::New         => "󰐕",
-            Self::Updated     => "󰏫",
-            Self::Event       => "󰃭",
-            Self::EventClosed => "󰄻",
-            Self::Done        => "󰄲",
-            Self::Cancelled   => "󰜺",
-            Self::InProgress  => "󰔛",
-            Self::Archived    => "󰀼",
-            Self::Open        => "󰄱",
-            Self::Note        => "󰈙",
-            Self::Stale       => "󰔚",
-            Self::Hidden      => "󰈈",
-        }
-    }
-
-    pub fn to_initial(self) -> char {
-        match self {
-            Self::Overdue     => '!',
-            Self::New         => '+',
-            Self::Updated     => '~',
-            Self::Event       => 'E',
-            Self::EventClosed => 'e',
-            Self::Done        => 'D',
-            Self::Cancelled   => 'C',
-            Self::InProgress  => 'I',
-            Self::Archived    => 'A',
-            Self::Open        => 'O',
-            Self::Note        => 'N',
-            Self::Stale       => 'S',
-            Self::Hidden      => 'H',
-        }
-    }
-}
-
-impl serde::Serialize for EntryFlag {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for EntryFlag {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        Self::ALL
-            .into_iter()
-            .find(|f| f.as_str() == s)
-            .ok_or_else(|| serde::de::Error::unknown_variant(&s, &Self::NAMES))
-    }
-}
 
 /// Returns the canonical flag string for a task status string.
 ///
@@ -162,11 +25,11 @@ impl<'de> serde::Deserialize<'de> for EntryFlag {
 /// Any unrecognised status is treated as `open`.
 pub fn task_status_label(status: &str) -> &'static str {
     match status {
-        "done" | "completed"     => "done",
+        "done" | "completed" => "done",
         "cancelled" | "canceled" => "cancelled",
-        "in_progress" | "wip"   => "in_progress",
-        "archived"               => "archived",
-        _                        => "open",
+        "in_progress" | "wip" => "in_progress",
+        "archived" => "archived",
+        _ => "open",
     }
 }
 
@@ -175,7 +38,11 @@ pub fn task_status_label(status: &str) -> &'static str {
 ///
 /// Events and notes (no task) are never stale, and a task with `closed_at` set
 /// (done/cancelled/archived) is never stale regardless of age.
-pub fn is_stale(task: Option<&TaskMetaView>, updated_at: NaiveDateTime, stale_after: Duration) -> bool {
+pub fn is_stale(
+    task: Option<&TaskMetaView>,
+    updated_at: NaiveDateTime,
+    stale_after: Duration,
+) -> bool {
     let incomplete_task = task.is_some_and(|t| t.closed_at.is_none());
     incomplete_task && (Local::now().naive_local() - updated_at) >= stale_after
 }
@@ -200,9 +67,8 @@ pub fn entry_flags(
     let now = Local::now().naive_local();
 
     // Slot 1: overdue (highest priority) > created <24h > updated <24h
-    let is_overdue = task.map_or(false, |t| {
-        t.due.map_or(false, |due| due < now) && t.closed_at.is_none()
-    });
+    let is_overdue =
+        task.is_some_and(|t| t.due.is_some_and(|due| due < now) && t.closed_at.is_none());
     if is_overdue {
         flags.push(EntryFlag::Overdue);
     } else {
@@ -223,11 +89,11 @@ pub fn entry_flags(
         }
     } else if let Some(task) = task {
         let flag = match task_status_label(&task.status) {
-            "done"        => EntryFlag::Done,
-            "cancelled"   => EntryFlag::Cancelled,
+            "done" => EntryFlag::Done,
+            "cancelled" => EntryFlag::Cancelled,
             "in_progress" => EntryFlag::InProgress,
-            "archived"    => EntryFlag::Archived,
-            _             => EntryFlag::Open,
+            "archived" => EntryFlag::Archived,
+            _ => EntryFlag::Open,
         };
         flags.push(flag);
     } else {
@@ -250,9 +116,16 @@ mod tests {
     use super::*;
     use crate::entry::{EventMetaView, TaskMetaView};
 
+    pub use sapphire_journal_api::EntryFlag;
+
     /// An incomplete task (`closed_at` absent) with an optional start time.
     fn open_task() -> TaskMetaView {
-        TaskMetaView { due: None, status: "open".into(), started_at: None, closed_at: None }
+        TaskMetaView {
+            due: None,
+            status: "open".into(),
+            started_at: None,
+            closed_at: None,
+        }
     }
 
     /// A closed task (`closed_at` present).
@@ -300,7 +173,11 @@ mod tests {
     fn closed_task_is_never_stale_regardless_of_age() {
         let stale_after = Duration::days(30);
         let updated_at = now() - Duration::days(365);
-        assert!(!is_stale(Some(&closed_task(updated_at)), updated_at, stale_after));
+        assert!(!is_stale(
+            Some(&closed_task(updated_at)),
+            updated_at,
+            stale_after
+        ));
     }
 
     #[test]
@@ -333,7 +210,14 @@ mod tests {
     fn entry_flags_marks_hidden_true_as_hidden() {
         let stale_after = Duration::days(30);
         let now_dt = now();
-        let flags = entry_flags(None, Some(&event(now_dt, now_dt)), true, now_dt, now_dt, stale_after);
+        let flags = entry_flags(
+            None,
+            Some(&event(now_dt, now_dt)),
+            true,
+            now_dt,
+            now_dt,
+            stale_after,
+        );
         assert!(flags.contains(&EntryFlag::Hidden));
     }
 

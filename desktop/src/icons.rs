@@ -19,17 +19,39 @@ macro_rules! icon {
 
 // ── Toolbar / chrome ───────────────────────────────────────────────────────
 
-pub fn arrow_left() -> egui::ImageSource<'static> { icon!("arrow-left") }
-pub fn calendar() -> egui::ImageSource<'static> { icon!("calendar") }
-pub fn chevron_down() -> egui::ImageSource<'static> { icon!("chevron-down") }
-pub fn chevron_right() -> egui::ImageSource<'static> { icon!("chevron-right") }
-pub fn funnel() -> egui::ImageSource<'static> { icon!("funnel") }
-pub fn list_view() -> egui::ImageSource<'static> { icon!("list") }
-pub fn tree_view() -> egui::ImageSource<'static> { icon!("folder-tree") }
-pub fn panel_right() -> egui::ImageSource<'static> { icon!("panel-right") }
-pub fn plus() -> egui::ImageSource<'static> { icon!("plus") }
-pub fn refresh() -> egui::ImageSource<'static> { icon!("refresh-cw") }
-pub fn trash() -> egui::ImageSource<'static> { icon!("trash-2") }
+pub fn arrow_left() -> egui::ImageSource<'static> {
+    icon!("arrow-left")
+}
+pub fn calendar() -> egui::ImageSource<'static> {
+    icon!("calendar")
+}
+pub fn chevron_down() -> egui::ImageSource<'static> {
+    icon!("chevron-down")
+}
+pub fn chevron_right() -> egui::ImageSource<'static> {
+    icon!("chevron-right")
+}
+pub fn funnel() -> egui::ImageSource<'static> {
+    icon!("funnel")
+}
+pub fn list_view() -> egui::ImageSource<'static> {
+    icon!("list")
+}
+pub fn tree_view() -> egui::ImageSource<'static> {
+    icon!("folder-tree")
+}
+pub fn panel_right() -> egui::ImageSource<'static> {
+    icon!("panel-right")
+}
+pub fn plus() -> egui::ImageSource<'static> {
+    icon!("plus")
+}
+pub fn refresh() -> egui::ImageSource<'static> {
+    icon!("refresh-cw")
+}
+pub fn trash() -> egui::ImageSource<'static> {
+    icon!("trash-2")
+}
 
 // ── Entry flags ────────────────────────────────────────────────────────────
 
@@ -37,20 +59,20 @@ pub fn trash() -> egui::ImageSource<'static> { icon!("trash-2") }
 /// render as tofu when no color emoji font was available.
 pub fn flag_icon(flag: EntryFlag) -> egui::ImageSource<'static> {
     match flag {
-        EntryFlag::Overdue     => icon!("alarm-clock"),
-        EntryFlag::New         => icon!("plus"),
-        EntryFlag::Updated     => icon!("pencil-line"),
-        EntryFlag::Event       => icon!("calendar"),
+        EntryFlag::Overdue => icon!("alarm-clock"),
+        EntryFlag::New => icon!("plus"),
+        EntryFlag::Updated => icon!("pencil-line"),
+        EntryFlag::Event => icon!("calendar"),
         EntryFlag::EventClosed => icon!("calendar-check"),
-        EntryFlag::Done        => icon!("circle-check"),
-        EntryFlag::Cancelled   => icon!("circle-x"),
-        EntryFlag::InProgress  => icon!("clock"),
-        EntryFlag::Archived    => icon!("archive"),
-        EntryFlag::Open        => icon!("circle"),
-        EntryFlag::Note        => icon!("file-text"),
+        EntryFlag::Done => icon!("circle-check"),
+        EntryFlag::Cancelled => icon!("circle-x"),
+        EntryFlag::InProgress => icon!("clock"),
+        EntryFlag::Archived => icon!("archive"),
+        EntryFlag::Open => icon!("circle"),
+        EntryFlag::Note => icon!("file-text"),
         // Stale/hidden を描画する専用アイコンは未導入。stale は未完了タスク
         // 由来なので clock を、hidden は非表示の意味で circle を流用する。
-        EntryFlag::Stale       => icon!("clock"),
-        EntryFlag::Hidden      => icon!("circle"),
+        EntryFlag::Stale => icon!("clock"),
+        EntryFlag::Hidden => icon!("circle"),
     }
 }

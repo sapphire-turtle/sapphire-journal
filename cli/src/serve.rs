@@ -51,7 +51,7 @@ pub const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3172";
 /// error instead of the framework's "no server is running".
 pub fn build_oneshot() -> AppServer {
     AppServer::new(&JOURNAL_CTX, VERSION)
-        .app_api(sapphire_journal_mcp::APP_API)
+        .app_api(sapphire_journal_api::API_VERSION)
         .mcp(sapphire_journal_mcp::service())
 }
 
@@ -170,23 +170,32 @@ impl CurrentJournal {
 ///
 /// A pass with no workspace selected, or one that is not a journal, does
 /// nothing; a failed pass is logged and the next one tries again.
-pub fn spawn_rescan(journal: Arc<CurrentJournal>, interval: Duration) -> tokio::task::JoinHandle<()> {
+pub fn spawn_rescan(
+    journal: Arc<CurrentJournal>,
+    interval: Duration,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         loop {
             ticker.tick().await;
             let current = Arc::clone(&journal);
             let pass = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-                let Ok(state) = current.get() else { return Ok(()) };
+                let Ok(state) = current.get() else {
+                    return Ok(());
+                };
                 // Recover a poisoned lock: a panic here would end this task
                 // silently, and no later pass would ever run.
-                let state = state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                let state = state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 Ok(state.sync()?)
             })
             .await;
             match pass {
                 Ok(Ok(())) => {}
-                Ok(Err(err)) => tracing::warn!("periodic re-scan of the entry cache failed: {err:#}"),
+                Ok(Err(err)) => {
+                    tracing::warn!("periodic re-scan of the entry cache failed: {err:#}")
+                }
                 Err(err) => tracing::warn!("periodic re-scan of the entry cache panicked: {err}"),
             }
             if journal.host.root().is_some() {

@@ -4849,13 +4849,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "sapphire-journal-cli"
-version = "0.12.0"
+name = "sapphire-journal"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
  "sapphire-framework",
+ "sapphire-journal-api",
  "sapphire-journal-core",
  "sapphire-journal-mcp",
  "serde",
@@ -4864,6 +4865,19 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "sapphire-journal-api"
+version = "2.0.0"
+dependencies = [
+ "chrono",
+ "grain-id 0.15.0",
+ "indexmap",
+ "sapphire-framework-server-api",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4877,6 +4891,7 @@ dependencies = [
  "sapphire-framework-frontmatter",
  "sapphire-framework-track",
  "sapphire-framework-workspace",
+ "sapphire-journal-api",
  "schemars",
  "serde",
  "serde_json",
@@ -4896,6 +4911,7 @@ dependencies = [
  "egui_extras",
  "grain-id 0.15.0",
  "sapphire-framework",
+ "sapphire-journal-api",
  "sapphire-journal-core",
  "sapphire-journal-mcp",
  "serde",
@@ -4913,6 +4929,7 @@ dependencies = [
  "chrono",
  "rmcp",
  "sapphire-framework",
+ "sapphire-journal-api",
  "sapphire-journal-core",
  "schemars",
  "serde",

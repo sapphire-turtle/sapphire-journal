@@ -269,10 +269,10 @@ fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
                     );
                 }
             }
-            if let Some(path) = want_select {
-                if home.selected_path.as_ref() != Some(&path) {
-                    home.select(path);
-                }
+            if let Some(path) = want_select
+                && home.selected_path.as_ref() != Some(&path)
+            {
+                home.select(path);
             }
         });
 
@@ -317,6 +317,7 @@ fn entry_row_context_menu(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_tree(
     ui: &mut egui::Ui,
     nodes: &[EntryTreeNode],
@@ -370,10 +371,9 @@ fn draw_tree(
                 if ui.ctx().is_being_dragged(dnd_id) {
                     egui::DragAndDrop::set_payload(ui.ctx(), id);
                     let layer_id = egui::LayerId::new(egui::Order::Tooltip, dnd_id);
-                    let inner = ui.scope_builder(
-                        egui::UiBuilder::new().layer_id(layer_id),
-                        |ui| draw_entry_row(ui, &node.entry, is_active, pending),
-                    );
+                    let inner = ui.scope_builder(egui::UiBuilder::new().layer_id(layer_id), |ui| {
+                        draw_entry_row(ui, &node.entry, is_active, pending)
+                    });
                     if let Some(pos) = ui.ctx().pointer_interact_pos() {
                         let delta = pos - inner.response.rect.center();
                         ui.ctx().transform_layer_shapes(
@@ -383,14 +383,9 @@ fn draw_tree(
                     }
                     inner.response
                 } else {
-                    let inner =
-                        ui.scope(|ui| draw_entry_row(ui, &node.entry, is_active, pending));
+                    let inner = ui.scope(|ui| draw_entry_row(ui, &node.entry, is_active, pending));
                     let outer = ui
-                        .interact(
-                            inner.response.rect,
-                            dnd_id,
-                            egui::Sense::click_and_drag(),
-                        )
+                        .interact(inner.response.rect, dnd_id, egui::Sense::click_and_drag())
                         .on_hover_cursor(egui::CursorIcon::Grab);
                     entry_row_context_menu(&outer, &node.entry, pending);
                     outer
@@ -417,12 +412,13 @@ fn draw_tree(
         }
         if let Some(payload) = row.dnd_release_payload::<GrainId>() {
             let src = *payload;
-            if src != id && !is_descendant_or_self(entries, src, id) {
-                if let Some(header) = entries.iter().find(|e| e.frontmatter.id == src) {
-                    // Only act when the parent actually changes.
-                    if header.frontmatter.parent_id != Some(id) {
-                        *reparent = Some((PathBuf::from(header.path.clone()), Some(id)));
-                    }
+            if src != id
+                && !is_descendant_or_self(entries, src, id)
+                && let Some(header) = entries.iter().find(|e| e.frontmatter.id == src)
+            {
+                // Only act when the parent actually changes.
+                if header.frontmatter.parent_id != Some(id) {
+                    *reparent = Some((PathBuf::from(header.path.clone()), Some(id)));
                 }
             }
         }
@@ -446,11 +442,7 @@ fn draw_tree(
 /// Returns `true` if `candidate` is `ancestor` itself, or any descendant of
 /// `ancestor`, by walking the `parent_id` chain on `candidate`.  Used to
 /// prevent the user from dropping an entry into its own subtree.
-fn is_descendant_or_self(
-    entries: &[EntryHeader],
-    ancestor: GrainId,
-    candidate: GrainId,
-) -> bool {
+fn is_descendant_or_self(entries: &[EntryHeader], ancestor: GrainId, candidate: GrainId) -> bool {
     if candidate == ancestor {
         return true;
     }
@@ -484,10 +476,8 @@ fn draw_root_drop_zone(
     if !is_dragging {
         return;
     }
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 20.0),
-        egui::Sense::hover(),
-    );
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 20.0), egui::Sense::hover());
     let visuals = ui.visuals();
     let is_hover = resp.contains_pointer();
     let bg = if is_hover {
@@ -505,10 +495,10 @@ fn draw_root_drop_zone(
     );
     if let Some(payload) = resp.dnd_release_payload::<GrainId>() {
         let src = *payload;
-        if let Some(header) = entries.iter().find(|e| e.frontmatter.id == src) {
-            if header.frontmatter.parent_id.is_some() {
-                *reparent = Some((PathBuf::from(header.path.clone()), None));
-            }
+        if let Some(header) = entries.iter().find(|e| e.frontmatter.id == src)
+            && header.frontmatter.parent_id.is_some()
+        {
+            *reparent = Some((PathBuf::from(header.path.clone()), None));
         }
     }
 }
@@ -633,12 +623,8 @@ fn draw_home_calendar(app: &mut App, ui: &mut egui::Ui) {
             include_stale: true,
             include_hidden: true,
             stale_after_days: 30,
-            };
-        let n = home
-            .entries
-            .iter()
-            .filter(|e| filter.matches(e).0)
-            .count();
+        };
+        let n = home.entries.iter().filter(|e| filter.matches(e).0).count();
         if n > 0 {
             counts.insert(date, n);
         }
@@ -825,11 +811,7 @@ fn draw_editor_panel_inner(home: &mut HomeState, ui: &mut egui::Ui) -> bool {
                                     egui::TextEdit::singleline(&mut editor.event_start)
                                         .desired_width(140.0),
                                 );
-                                date_picker_button(
-                                    ui,
-                                    "event_start",
-                                    &mut editor.event_start,
-                                );
+                                date_picker_button(ui, "event_start", &mut editor.event_start);
                             });
                         });
                         ui.vertical(|ui| {
@@ -908,22 +890,22 @@ fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     let mut headers = home.entries.clone();
 
     // Period filter via core EntryFilter.
-    if !home.period.trim().is_empty() {
-        if let Ok(period) = parse_period(home.period.trim()) {
-            let filter = EntryFilter {
-                period: Some(period),
-                fields: FieldSelector::active(),
-                task_status: Vec::new(),
-                tags: Vec::new(),
-                sort_by: CoreSortField::Unsorted,
-                sort_order: CoreSortOrder::Asc,
-                // GUI は stale/hidden をまだ扱わない（別タスク）。従来どおり全件表示。
-                include_stale: true,
-                include_hidden: true,
-                stale_after_days: 30,
-                };
-            headers.retain(|h| filter.matches(h).0);
-        }
+    if !home.period.trim().is_empty()
+        && let Ok(period) = parse_period(home.period.trim())
+    {
+        let filter = EntryFilter {
+            period: Some(period),
+            fields: FieldSelector::active(),
+            task_status: Vec::new(),
+            tags: Vec::new(),
+            sort_by: CoreSortField::Unsorted,
+            sort_order: CoreSortOrder::Asc,
+            // GUI は stale/hidden をまだ扱わない（別タスク）。従来どおり全件表示。
+            include_stale: true,
+            include_hidden: true,
+            stale_after_days: 30,
+        };
+        headers.retain(|h| filter.matches(h).0);
     }
 
     // Substring filter on title / tags / id.
@@ -942,9 +924,9 @@ fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     // Sort.
     match home.sort_by.as_str() {
         "title" => headers.sort_by(|a, b| a.title().cmp(b.title())),
-        "id" => headers.sort_by(|a, b| a.id().cmp(&b.id())),
-        "created_at" => headers.sort_by(|a, b| a.frontmatter.created_at.cmp(&b.frontmatter.created_at)),
-        "updated_at" => headers.sort_by(|a, b| a.frontmatter.updated_at.cmp(&b.frontmatter.updated_at)),
+        "id" => headers.sort_by_key(|a| a.id()),
+        "created_at" => headers.sort_by_key(|a| a.frontmatter.created_at),
+        "updated_at" => headers.sort_by_key(|a| a.frontmatter.updated_at),
         "task_due" => headers.sort_by(|a, b| {
             let av = a.frontmatter.task.as_ref().and_then(|t| t.due);
             let bv = b.frontmatter.task.as_ref().and_then(|t| t.due);
@@ -1147,11 +1129,7 @@ fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
 // ── Display helpers ─────────────────────────────────────────────────────────
 
 /// Square icon-only button (16×16) with a tooltip.
-fn icon_btn(
-    ui: &mut egui::Ui,
-    src: egui::ImageSource<'static>,
-    tooltip: &str,
-) -> egui::Response {
+fn icon_btn(ui: &mut egui::Ui, src: egui::ImageSource<'static>, tooltip: &str) -> egui::Response {
     let tint = ui.visuals().text_color();
     let img = egui::Image::new(src)
         .fit_to_exact_size(egui::vec2(16.0, 16.0))
@@ -1176,11 +1154,7 @@ fn icon_toggle_btn(
 }
 
 /// Icon + text button (14×14 icon to align with the label height).
-fn icon_text_btn(
-    ui: &mut egui::Ui,
-    src: egui::ImageSource<'static>,
-    text: &str,
-) -> egui::Response {
+fn icon_text_btn(ui: &mut egui::Ui, src: egui::ImageSource<'static>, text: &str) -> egui::Response {
     let tint = ui.visuals().text_color();
     let img = egui::Image::new(src)
         .fit_to_exact_size(egui::vec2(14.0, 14.0))
@@ -1222,10 +1196,4 @@ fn sort_label(value: &str) -> &'static str {
         .unwrap_or("Updated")
 }
 
-const TASK_STATUS_OPTIONS: &[&str] = &[
-    "open",
-    "in_progress",
-    "done",
-    "cancelled",
-    "archived",
-];
+const TASK_STATUS_OPTIONS: &[&str] = &["open", "in_progress", "done", "cancelled", "archived"];

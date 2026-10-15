@@ -1,6 +1,7 @@
 //! MCP for sapphire-journal, on the framework's MCP (`sapphire_framework::mcp`).
 //!
-//! Two halves, joined by the app server's IPC:
+//! The methods' names and types are `sapphire-journal-api`'s. Two halves,
+//! joined by the app server's IPC:
 //!
 //! - [`methods`]: the journal's `sapphire-journal.*` methods, registered on the
 //!   app server, working on the workspace it has selected.
@@ -13,6 +14,6 @@ pub mod client;
 pub mod methods;
 pub mod tools;
 
-pub use methods::{APP_API, JournalMethods, StateSource, WriteObserver, register};
 pub use client::JournalClient;
+pub use methods::{JournalMethods, StateSource, WriteObserver, register};
 pub use tools::{JournalTools, service};
