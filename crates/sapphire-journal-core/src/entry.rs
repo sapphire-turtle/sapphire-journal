@@ -49,7 +49,7 @@ pub struct Frontmatter {
 
     /// Unknown frontmatter fields preserved for round-trip compatibility.
     #[serde(flatten)]
-    pub extra: IndexMap<String, serde_yaml::Value>,
+    pub extra: IndexMap<String, sapphire_frontmatter::Value>,
 }
 
 /// Task-specific metadata.
@@ -78,7 +78,7 @@ pub struct TaskMeta {
 
     /// Unknown task fields preserved for round-trip compatibility.
     #[serde(flatten)]
-    pub extra: IndexMap<String, serde_yaml::Value>,
+    pub extra: IndexMap<String, sapphire_frontmatter::Value>,
 }
 
 fn default_task_status() -> String {
@@ -95,7 +95,7 @@ pub struct EventMeta {
 
     /// Unknown event fields preserved for round-trip compatibility.
     #[serde(flatten)]
-    pub extra: IndexMap<String, serde_yaml::Value>,
+    pub extra: IndexMap<String, sapphire_frontmatter::Value>,
 }
 
 /// A single entry — one Markdown file in the journal.
