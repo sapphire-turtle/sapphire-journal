@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "cli",
+    "crates/sapphire-journal-api",
     "crates/sapphire-journal-core",
     "desktop",
     "crates/sapphire-journal-mcp",

@@ -284,18 +284,7 @@ impl Default for JournalSection {
     }
 }
 
-/// Controls how duplicate entry titles are treated during cache sync.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DuplicateTitlePolicy {
-    /// Duplicates are silently allowed.
-    Allow,
-    /// Print a warning to stderr for each duplicate title, but continue.
-    #[default]
-    Warn,
-    /// Abort sync with [`Error::DuplicateTitle`] on the first duplicate found.
-    Error,
-}
+pub use sapphire_journal_api::DuplicateTitlePolicy;
 
 /// **Deprecated.** ISO weeks (Monday start) are always used now.
 /// Kept for backward-compatible deserialization of existing `config.toml` files.

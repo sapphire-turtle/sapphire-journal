@@ -15,9 +15,9 @@ use sapphire_journal_core::entry::{Entry, EntryHeader};
 use sapphire_journal_core::entry_ref::EntryRef;
 use sapphire_journal_core::ops::{EntryListItem, UpdateOption};
 use sapphire_journal_mcp::JournalClient;
-use sapphire_journal_mcp::methods::{
-    ConfigSetParams, EmptyParams, EntryGetParams, EntryListParams, EntryModifyParams,
-    EntryPrepareParams, EntryRemoveParams, EntrySaveParams, JournalSettings, names,
+use sapphire_journal_api::{
+    self as api, ConfigSetParams, EmptyParams, EntryGetParams, EntryListParams, EntryModifyParams,
+    EntryPrepareParams, EntryRemoveParams, EntrySaveParams, JournalSettings,
 };
 
 /// What came back from the server.
@@ -85,7 +85,7 @@ impl Api {
                 ..Default::default()
             };
             let items: Result<Vec<EntryListItem>, String> =
-                client.read(names::ENTRY_LIST, params).await;
+                client.read(api::ENTRY_LIST, params).await;
             Reply::Entries(items.map(|items| items.into_iter().map(|i| i.entry).collect()))
         });
     }
@@ -94,7 +94,7 @@ impl Api {
         let client = Arc::clone(&self.client);
         self.spawn(async move {
             let entry = EntryRef::Path(path.clone());
-            let result = client.read(names::ENTRY_GET, EntryGetParams { entry }).await;
+            let result = client.read(api::ENTRY_GET, EntryGetParams { entry }).await;
             Reply::Loaded(path, result.map(Box::new))
         });
     }
@@ -105,7 +105,7 @@ impl Api {
             let params = EntryPrepareParams {
                 parent: parent.map(EntryRef::Id),
             };
-            let result = client.call(names::ENTRY_PREPARE, params).await;
+            let result = client.call(api::ENTRY_PREPARE, params).await;
             Reply::Prepared(result.map(PathBuf::from))
         });
     }
@@ -114,7 +114,7 @@ impl Api {
         let client = Arc::clone(&self.client);
         self.spawn(async move {
             let path = entry.path.clone();
-            let result = client.call(names::ENTRY_SAVE, EntrySaveParams { entry }).await;
+            let result = client.call(api::ENTRY_SAVE, EntrySaveParams { entry }).await;
             Reply::Saved(path, result.map(PathBuf::from))
         });
     }
@@ -123,7 +123,7 @@ impl Api {
         let client = Arc::clone(&self.client);
         self.spawn(async move {
             let entry = EntryRef::Path(path.clone());
-            let result = client.call(names::ENTRY_REMOVE, EntryRemoveParams { entry }).await;
+            let result = client.call(api::ENTRY_REMOVE, EntryRemoveParams { entry }).await;
             Reply::Removed(path, result.map(|_| ()))
         });
     }
@@ -137,7 +137,7 @@ impl Api {
                 None => UpdateOption::Clear,
             };
             // "updated: <path>" or "updated and renamed: <path>".
-            let result = client.call(names::ENTRY_MODIFY, params).await.map(|text| {
+            let result = client.call(api::ENTRY_MODIFY, params).await.map(|text| {
                 text.strip_prefix("updated and renamed: ")
                     .or_else(|| text.strip_prefix("updated: "))
                     .map(PathBuf::from)
@@ -150,18 +150,18 @@ impl Api {
     pub fn refresh(&self) {
         let client = Arc::clone(&self.client);
         self.spawn(async move {
-            let result = client.call(names::CACHE_SYNC, EmptyParams {}).await;
+            let result = client.call(api::CACHE_SYNC, EmptyParams {}).await;
             Reply::Refreshed(result.map(|_| ()))
         });
     }
 
     pub fn settings(&self) {
         let client = Arc::clone(&self.client);
-        self.spawn(async move { Reply::Settings(client.read(names::CONFIG_GET, EmptyParams {}).await) });
+        self.spawn(async move { Reply::Settings(client.read(api::CONFIG_GET, EmptyParams {}).await) });
     }
 
     pub fn set_settings(&self, params: ConfigSetParams) {
         let client = Arc::clone(&self.client);
-        self.spawn(async move { Reply::SettingsSaved(client.read(names::CONFIG_SET, params).await) });
+        self.spawn(async move { Reply::SettingsSaved(client.read(api::CONFIG_SET, params).await) });
     }
 }

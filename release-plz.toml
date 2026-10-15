@@ -3,6 +3,13 @@ changelog_update = true
 git_release_enable = true
 git_tag_enable = true
 
+# The journal's IPC API: its major is the API version, so it is released on its
+# own and only when the methods or their types change.
+[[package]]
+name = "sapphire-journal-api"
+git_tag_name = "api-v{{ version }}"
+git_release_name = "api-v{{ version }}"
+
 [[package]]
 name = "sapphire-journal-core"
 git_tag_name = "core-v{{ version }}"

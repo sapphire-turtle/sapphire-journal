@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Subcommand;
-use sapphire_journal_mcp::methods::{EmptyParams, names};
+use sapphire_journal_api::{self as api, EmptyParams};
 
 use crate::client::Server;
 
@@ -16,7 +16,7 @@ pub enum ConfigCommand {
 
 pub fn run(server: &Server, cmd: ConfigCommand) -> Result<()> {
     match cmd {
-        ConfigCommand::Show => println!("{}", server.call(names::CONFIG_SHOW, EmptyParams {})?),
+        ConfigCommand::Show => println!("{}", server.call(api::CONFIG_SHOW, EmptyParams {})?),
     }
     Ok(())
 }

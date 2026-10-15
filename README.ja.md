@@ -134,6 +134,7 @@ sapphire-journal/
 
 | コンポーネント | ライセンス |
 |-----------|---------|
+| `sapphire-journal-api` | MIT OR Apache-2.0 |
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
 | `sapphire-journal` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |

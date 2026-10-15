@@ -15,7 +15,7 @@ use rusqlite::Connection;
 use crate::{
     cache,
     labels::is_stale,
-    entry::{Entry, EntryHeader, EventMeta, Frontmatter, TaskMeta},
+    entry::{self, Entry, EntryHeader, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
     journal::{DuplicateTitlePolicy, Journal, slugify},
@@ -24,70 +24,7 @@ use crate::{
     period::Period,
 };
 
-// ── UpdateOption ──────────────────────────────────────────────────────────────
-
-/// Represents the three possible states for an optional field in an update
-/// operation: set it to a new value, clear it (set to `None`), or leave it
-/// unchanged.
-///
-/// # JSON / MCP representation
-///
-/// When used as a struct field with `#[serde(default)]`:
-/// - field absent  → `Unchanged` (via `Default`)
-/// - field `null`  → `Clear`
-/// - field `<value>` → `Set(value)`
-///
-/// Serializing mirrors that: `Set` is the value and `Clear` is `null`.
-/// `Unchanged` must be left out of the output by the containing struct
-/// (`#[serde(skip_serializing_if = "UpdateOption::is_unchanged")]`).
-///
-/// The JSON schema is identical to `Option<T>` (nullable value).
-#[derive(Debug, Default)]
-pub enum UpdateOption<T> {
-    Set(T),
-    Clear,
-    #[default]
-    Unchanged,
-}
-
-impl<T> UpdateOption<T> {
-    pub fn is_unchanged(&self) -> bool {
-        matches!(self, UpdateOption::Unchanged)
-    }
-}
-
-impl<T: serde::Serialize> serde::Serialize for UpdateOption<T> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        match self {
-            UpdateOption::Set(v) => serializer.serialize_some(v),
-            UpdateOption::Clear | UpdateOption::Unchanged => serializer.serialize_none(),
-        }
-    }
-}
-
-impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for UpdateOption<T> {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        Ok(match Option::<T>::deserialize(deserializer)? {
-            None    => UpdateOption::Clear,
-            Some(v) => UpdateOption::Set(v),
-        })
-    }
-}
-
-impl<T: schemars::JsonSchema> schemars::JsonSchema for UpdateOption<T> {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        format!("Nullable_{}", T::schema_name()).into()
-    }
-
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        // Reuse Option<T>'s schema: the inner value or null.
-        Option::<T>::json_schema(generator)
-    }
-
-    fn inline_schema() -> bool {
-        true
-    }
-}
+pub use sapphire_journal_api::{EntryListItem, EntryTreeNode, MatchFlag, UpdateOption};
 
 // ── SortField / SortOrder ─────────────────────────────────────────────────────
 
@@ -386,88 +323,6 @@ impl EntryFilter {
 
 // ── MatchFlag ────────────────────────────────────────────────────────────────
 
-/// Identifies which timestamp field caused an entry to match a filter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchFlag {
-    /// Task is incomplete (`closed_at` absent) and `due ≤ period_end` (or `due < now`).
-    TaskOverdue,
-    /// Task is incomplete (`closed_at` absent) and `started_at ≤ period_end` (or `started_at` set).
-    TaskInProgress,
-    /// Task exists but `started_at` and `closed_at` are both absent.
-    TaskUnstarted,
-    /// The filter period overlaps the event's [start, end] span.
-    EventSpan,
-    CreatedAt,
-    UpdatedAt,
-    /// Entry did not match the filter itself, but one or more of its
-    /// descendants did (included to preserve tree context).
-    ParentOfMatch,
-}
-
-impl MatchFlag {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            MatchFlag::TaskOverdue    => "task_overdue",
-            MatchFlag::TaskInProgress => "task_in_progress",
-            MatchFlag::TaskUnstarted  => "task_unstarted",
-            MatchFlag::EventSpan      => "event_span",
-            MatchFlag::CreatedAt      => "created",
-            MatchFlag::UpdatedAt      => "updated",
-            MatchFlag::ParentOfMatch  => "parent_of_match",
-        }
-    }
-}
-
-impl serde::Serialize for MatchFlag {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for MatchFlag {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
-        const ALL: [MatchFlag; 7] = [
-            MatchFlag::TaskOverdue,
-            MatchFlag::TaskInProgress,
-            MatchFlag::TaskUnstarted,
-            MatchFlag::EventSpan,
-            MatchFlag::CreatedAt,
-            MatchFlag::UpdatedAt,
-            MatchFlag::ParentOfMatch,
-        ];
-        let s = String::deserialize(d)?;
-        ALL.into_iter()
-            .find(|f| f.as_str() == s)
-            .ok_or_else(|| serde::de::Error::custom(format!("unknown match flag `{s}`")))
-    }
-}
-
-// ── EntryListItem ─────────────────────────────────────────────────────────────
-
-/// A flat list item pairing an [`EntryHeader`] with its [`MatchFlag`]s.
-///
-/// Serializes all entry fields at the top level, with `match_flags` omitted
-/// when there is no active filter (i.e. when `match_flags` is `None`).
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct EntryListItem {
-    #[serde(flatten)]
-    pub entry: EntryHeader,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub match_flags: Option<Vec<MatchFlag>>,
-}
-
-// ── tree ──────────────────────────────────────────────────────────────────────
-
-/// A node in an entry hierarchy returned by [`build_entry_tree`].
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct EntryTreeNode {
-    #[serde(flatten)]
-    pub entry: EntryHeader,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub match_flags: Vec<MatchFlag>,
-    pub children: Vec<EntryTreeNode>,
-}
-
 /// Organise a flat list of `(entry, labels)` pairs into a forest (list of
 /// root trees) based on each entry's `parent_id`.
 ///
@@ -562,7 +417,7 @@ pub fn fill_ancestor_entries(
                     .collect_entries()
                     .unwrap_or_default()
                     .iter()
-                    .filter_map(|p| read_entry(p).ok().map(EntryHeader::from))
+                    .filter_map(|p| read_entry(p).ok().map(entry::header))
                     .collect()
             });
         all.into_iter().map(|e| (e.frontmatter.id, e)).collect()
@@ -631,7 +486,7 @@ pub fn list_entries(
         .collect_entries()?
         .iter()
         .filter_map(|p| match read_entry(p) {
-            Ok(e) => Some(EntryHeader::from(e)),
+            Ok(e) => Some(entry::header(e)),
             Err(e) => { eprintln!("warn: {} — {e}", p.display()); None }
         })
         .collect();

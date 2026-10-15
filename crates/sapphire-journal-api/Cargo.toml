@@ -1,0 +1,25 @@
+[package]
+name = "sapphire-journal-api"
+# The major is the journal's API version (`API_VERSION`); it moves only when the
+# methods or their types break, not with the journal's version.
+version = "2.0.0"
+edition.workspace = true
+description = "The methods a sapphire-journal app server serves, and their types"
+license.workspace = true
+repository.workspace = true
+keywords = ["ipc", "protocol", "task-management", "notes", "local-first"]
+categories = ["network-programming"]
+
+[dependencies]
+# The framework's methods every app server serves (`workspace.*`, `sync.*`),
+# re-exported as `server`: a client finds all it can ask the journal's server here.
+sapphire-server-api = { package = "sapphire-framework-server-api", version = "4.2" }
+chrono.workspace = true
+grain-id = { version = "0.15", features = ["serde", "schemars"] }
+indexmap.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

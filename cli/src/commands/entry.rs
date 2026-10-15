@@ -7,9 +7,9 @@ use sapphire_journal_core::{
     period::{parse_datetime, parse_datetime_end},
     text_input::filter as core_filter,
 };
-use sapphire_journal_mcp::methods::{
-    EntryCheckParams, EntryFixParams, EntryGetParams, EntryListParams, EntryModifyParams,
-    EntryNewParams, EntryPrepareParams, EntryRemoveParams, EntryResolveParams, names,
+use sapphire_journal_api::{
+    self as api, EntryCheckParams, EntryFixParams, EntryGetParams, EntryListParams, EntryModifyParams,
+    EntryNewParams, EntryPrepareParams, EntryRemoveParams, EntryResolveParams,
 };
 use sapphire_framework::backend::{IpcBackend, SearchMode, WorkspaceBackend as _};
 use sapphire_framework::ipc::Endpoint;
@@ -393,31 +393,31 @@ pub fn run(server: &Server, cmd: EntryCommand) -> Result<()> {
         EntryCommand::List { filter, json, emoji, nerd } => {
             let params = list_params(&filter)?;
             if json {
-                println!("{}", server.call(names::ENTRY_LIST, params)?);
+                println!("{}", server.call(api::ENTRY_LIST, params)?);
                 return Ok(());
             }
-            let items: Vec<EntryListItem> = server.read(names::ENTRY_LIST, params)?;
+            let items: Vec<EntryListItem> = server.read(api::ENTRY_LIST, params)?;
             print_entries(&items, DisplayMode::from_flags(emoji, nerd));
             Ok(())
         }
         EntryCommand::Tree { filter, json, emoji, nerd } => {
             let params = list_params(&filter)?;
             if json {
-                println!("{}", server.call(names::ENTRY_TREE, params)?);
+                println!("{}", server.call(api::ENTRY_TREE, params)?);
                 return Ok(());
             }
-            let roots: Vec<EntryTreeNode> = server.read(names::ENTRY_TREE, params)?;
+            let roots: Vec<EntryTreeNode> = server.read(api::ENTRY_TREE, params)?;
             print_tree(&roots, DisplayMode::from_flags(emoji, nerd));
             Ok(())
         }
         EntryCommand::Show { entry } => {
             let entry: Entry =
-                server.read(names::ENTRY_GET, EntryGetParams { entry: EntryRef::parse(&entry) })?;
+                server.read(api::ENTRY_GET, EntryGetParams { entry: EntryRef::parse(&entry) })?;
             show(&entry);
             Ok(())
         }
         EntryCommand::New { fields } => {
-            println!("{}", server.call(names::ENTRY_NEW, fields.into_new_params())?);
+            println!("{}", server.call(api::ENTRY_NEW, fields.into_new_params())?);
             Ok(())
         }
         EntryCommand::Edit { entry, new } => {
@@ -434,33 +434,33 @@ pub fn run(server: &Server, cmd: EntryCommand) -> Result<()> {
                 bail!("nothing to update — specify at least one field");
             }
             let params = fields.into_modify_params(EntryRef::parse(&entry), no_parent);
-            println!("{}", server.call(names::ENTRY_MODIFY, params)?);
+            println!("{}", server.call(api::ENTRY_MODIFY, params)?);
             Ok(())
         }
         EntryCommand::Check { entry } => {
             let params = EntryCheckParams { entry: EntryRef::parse(&entry) };
-            println!("{}", server.call(names::ENTRY_CHECK, params)?);
+            println!("{}", server.call(api::ENTRY_CHECK, params)?);
             Ok(())
         }
         EntryCommand::Fix { entry } => {
             let params = EntryFixParams { entry: EntryRef::parse(&entry) };
-            println!("{}", server.call(names::ENTRY_FIX, params)?);
+            println!("{}", server.call(api::ENTRY_FIX, params)?);
             Ok(())
         }
         EntryCommand::Path { entry, new, parent } => {
             let path = if new {
                 let parent = parent.as_deref().map(EntryRef::parse);
-                server.call(names::ENTRY_PREPARE, EntryPrepareParams { parent })?
+                server.call(api::ENTRY_PREPARE, EntryPrepareParams { parent })?
             } else {
                 let entry = EntryRef::parse(entry.as_deref().expect("clap requires it without --new"));
-                server.call(names::ENTRY_RESOLVE, EntryResolveParams { entry })?
+                server.call(api::ENTRY_RESOLVE, EntryResolveParams { entry })?
             };
             println!("{path}");
             Ok(())
         }
         EntryCommand::Remove { entry } => {
             let params = EntryRemoveParams { entry: EntryRef::parse(&entry) };
-            println!("{}", server.call(names::ENTRY_REMOVE, params)?);
+            println!("{}", server.call(api::ENTRY_REMOVE, params)?);
             Ok(())
         }
         EntryCommand::Search { query, semantic, limit } => search(&query, semantic, limit),
@@ -604,9 +604,9 @@ fn show(entry: &Entry) {
 // entry afterwards (`entry_fix`), which also brings its cache row up to date.
 
 fn edit(server: &Server, entry: &str) -> Result<()> {
-    let path = server.call(names::ENTRY_RESOLVE, EntryResolveParams { entry: EntryRef::parse(entry) })?;
+    let path = server.call(api::ENTRY_RESOLVE, EntryResolveParams { entry: EntryRef::parse(entry) })?;
     run_editor(Path::new(&path))?;
-    let fixed = server.call(names::ENTRY_FIX, EntryFixParams { entry: EntryRef::Path(path.clone().into()) })?;
+    let fixed = server.call(api::ENTRY_FIX, EntryFixParams { entry: EntryRef::Path(path.clone().into()) })?;
     println!("updated: {path}");
     if fixed.starts_with("renamed:") {
         println!("{fixed}");
@@ -615,13 +615,13 @@ fn edit(server: &Server, entry: &str) -> Result<()> {
 }
 
 fn edit_new(server: &Server) -> Result<()> {
-    let path = server.call(names::ENTRY_PREPARE, EntryPrepareParams::default())?;
+    let path = server.call(api::ENTRY_PREPARE, EntryPrepareParams::default())?;
     let entry = EntryRef::Path(path.clone().into());
     if let Err(err) = run_editor(Path::new(&path)) {
-        let _ = server.call(names::ENTRY_REMOVE, EntryRemoveParams { entry });
+        let _ = server.call(api::ENTRY_REMOVE, EntryRemoveParams { entry });
         return Err(err);
     }
-    let fixed = server.call(names::ENTRY_FIX, EntryFixParams { entry })?;
+    let fixed = server.call(api::ENTRY_FIX, EntryFixParams { entry })?;
     println!("created: {path}");
     if fixed.starts_with("renamed:") {
         println!("{fixed}");

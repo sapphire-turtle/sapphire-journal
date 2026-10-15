@@ -51,7 +51,7 @@ pub const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3172";
 /// error instead of the framework's "no server is running".
 pub fn build_oneshot() -> AppServer {
     AppServer::new(&JOURNAL_CTX, VERSION)
-        .app_api(sapphire_journal_mcp::APP_API)
+        .app_api(sapphire_journal_api::API_VERSION)
         .mcp(sapphire_journal_mcp::service())
 }
 

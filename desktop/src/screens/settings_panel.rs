@@ -8,7 +8,7 @@ use eframe::egui;
 
 use sapphire_journal_core::journal::DuplicateTitlePolicy;
 use sapphire_journal_core::ops::UpdateOption;
-use sapphire_journal_mcp::methods::{ConfigSetParams, JournalSettings};
+use sapphire_journal_api::{ConfigSetParams, JournalSettings};
 
 use crate::app::App;
 
