@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-core-v0.12.0...sapphire-journal-core-v0.13.0) - 2026-10-15
+
+### Added
+
+- *(mcp,core)* server methods for the CLI and the desktop app
+- [**breaking**] follow sapphire-framework 0.17 ([#233](https://github.com/sapphire-turtle/sapphire-journal/pull/233)) as one sapphire-journal binary
+- *(core,cli,mcp)* add stale/hidden filter with opt-in restoration (issue #288)
+
+### Fixed
+
+- *(core,deny)* read frontmatter with the framework, not serde_yaml
+- adapt cache change-detection to framework FileStamp API
+- *(core)* update include_str docs/config path after crate move
+
+### Other
+
+- install with the shared script; sapphire-turtle metadata
+- pin the toolchain to 1.99.0; apply its fmt and clippy
+- [**breaking**] split the journal's IPC API into sapphire-journal-api
+- Merge branch 'main' into chore/framework-0.20
+- *(core)* split and render entries with the framework's frontmatter
+- *(deps)* sapphire-framework 0.20
+- *(core)* centralize stale threshold in STALE_AFTER_DAYS_DEFAULT and default EntryFilter to 30
+- *(core)* add unit tests for stale/hidden filter gate
+- *(deps)* switch sapphire-framework from git/branch to crates.io version
+- adopt repo-layout and language conventions; add CONTRIBUTING and README.ja
+
 ## [0.12.0](https://github.com/fluo10/sapphire-journal/compare/core-v0.11.1...core-v0.12.0) - 2026-05-24
 
 ### Added

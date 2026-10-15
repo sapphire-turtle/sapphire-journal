@@ -2,6 +2,32 @@
 
 All notable changes to `sapphire-journal` and `sapphire-journal-core` are documented here.
 
+## [0.13.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.11.1...v0.13.0) - 2026-10-15
+
+### Added
+
+- *(cli)* [**breaking**] print the help on a bare invocation instead of starting the server
+- *(mcp,core)* server methods for the CLI and the desktop app
+- [**breaking**] follow sapphire-framework 0.17 ([#233](https://github.com/sapphire-turtle/sapphire-journal/pull/233)) as one sapphire-journal binary
+- *(core,cli,mcp)* add stale/hidden filter with opt-in restoration (issue #288)
+
+### Other
+
+- install with the shared script; sapphire-turtle metadata
+- run CI, cargo-deny and releases on the shared workflows
+- pin the toolchain to 1.99.0; apply its fmt and clippy
+- *(cli)* release 0.13.0 under `v*` tags
+- [**breaking**] split the journal's IPC API into sapphire-journal-api
+- *(cli)* [**breaking**] publish the CLI as `sapphire-journal`
+- *(deps)* sapphire-framework 0.20
+- Merge branch 'main' into chore/framework-0.19
+- *(cli)* take the parent id from the file name, not a '/' split
+- *(deps)* sapphire-framework 0.19, rmcp 3.5; reconnect to the bridge on its own
+- the server reads and writes the journal; everything else asks it
+- *(cli)* [**breaking**] the journal's commands go through the running server
+- *(core)* centralize stale threshold in STALE_AFTER_DAYS_DEFAULT and default EntryFilter to 30
+- adopt repo-layout and language conventions; add CONTRIBUTING and README.ja
+
 ## [0.11.1] - 2026-04-13
 
 ### Fixed

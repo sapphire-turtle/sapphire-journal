@@ -21,9 +21,9 @@ default = ["redb-store"]
 redb-store = ["sapphire-framework/redb-store"]
 
 [dependencies]
-sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.12.0", features = ["text-input"] }
+sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.13.0", features = ["text-input"] }
 sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "2.0.0" }
-sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp",  version = "0.1.0" }
+sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.2.0" }
 sapphire-framework = { workspace = true, features = ["server", "ipc", "mcp"] }
 clap.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
