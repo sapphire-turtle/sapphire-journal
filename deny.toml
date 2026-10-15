@@ -19,8 +19,6 @@ yanked = "warn"
 # Re-evaluate when those crates' upstreams move off the affected package, or
 # when a fix lands upstream.
 ignore = [
-    { id = "RUSTSEC-2026-0105", reason = "core2 is unmaintained and yanked but pulled in via image → rav1e → bitstream-io." },
-    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained but pulled in via many proc-macro consumers; no drop-in replacement." },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained (author announced no further fixes) but pulled in transitively via egui/epaint_default_fonts; no drop-in replacement yet." },
 ]
 
