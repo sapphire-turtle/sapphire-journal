@@ -87,13 +87,13 @@ irm https://raw.githubusercontent.com/fluo10/sapphire-journal/main/desktop/insta
 ### cargo-binstall
 
 ```sh
-cargo binstall sapphire-journal-cli
+cargo binstall sapphire-journal
 ```
 
 ### ソースから
 
 ```sh
-cargo install sapphire-journal-cli
+cargo install sapphire-journal
 ```
 
 ## CLIの使い方
@@ -135,7 +135,7 @@ sapphire-journal/
 | コンポーネント | ライセンス |
 |-----------|---------|
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
-| `sapphire-journal-cli` | MIT OR Apache-2.0 |
+| `sapphire-journal` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later、App Storeマーケットプレイス例外付き |
 

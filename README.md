@@ -89,13 +89,13 @@ irm https://raw.githubusercontent.com/fluo10/sapphire-journal/main/install.ps1 |
 ### cargo-binstall
 
 ```sh
-cargo binstall sapphire-journal-cli
+cargo binstall sapphire-journal
 ```
 
 ### From source
 
 ```sh
-cargo install sapphire-journal-cli
+cargo install sapphire-journal
 ```
 
 ## CLI usage
@@ -147,7 +147,7 @@ This repository contains components under different licenses:
 | Component | License |
 |-----------|---------|
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
-| `sapphire-journal-cli` | MIT OR Apache-2.0 |
+| `sapphire-journal` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later, with [App Store marketplace exception](desktop/LICENSE.App-Store-Exception) |
 

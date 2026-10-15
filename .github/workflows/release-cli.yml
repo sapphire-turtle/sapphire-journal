@@ -1,6 +1,6 @@
 name: Release CLI binaries
 
-# Builds the cross-platform sapphire-journal-cli binaries and uploads
+# Builds the cross-platform sapphire-journal binaries and uploads
 # them as release assets onto an existing GitHub release.
 #
 # Triggered as a reusable workflow from release-plz.yml (right after
@@ -65,7 +65,7 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install protoc
 
-      - run: cargo build --release --package sapphire-journal-cli
+      - run: cargo build --release --package sapphire-journal
 
       - name: Rename binary
         shell: bash

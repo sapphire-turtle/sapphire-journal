@@ -42,7 +42,7 @@ rm ~/.local/bin/sapphire-journal
 Remove-Item "$HOME\.local\bin\sapphire-journal.exe"
 
 # cargo-installed
-cargo uninstall sapphire-journal-cli
+cargo uninstall sapphire-journal
 ```
 
 ---
