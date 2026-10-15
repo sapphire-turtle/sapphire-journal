@@ -1,10 +1,13 @@
 # cargo-deny config. Run locally with `cargo deny check`.
 # Reference: https://embarkstudios.github.io/cargo-deny/
+#
+# The shared starting point for sapphire-turtle repositories
+# (sapphire-framework/ci/templates/deny.toml). Keep repository-specific entries
+# under `ignore` and `exceptions`, each with its reason.
 
 [graph]
-# Restrict the dep graph to the platforms we actually publish binaries for
-# (see release-cli.yml / release-desktop.yml). This drops UEFI/WASM-only
-# transitive deps like `r-efi` so we don't need to allow their licenses.
+# The platforms release binaries are published for. Drops UEFI/WASM-only
+# transitive dependencies such as `r-efi`, so their licenses need no allowing.
 targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
@@ -15,16 +18,15 @@ all-features = true
 
 [advisories]
 yanked = "warn"
-# Transitive advisories we can't act on without replacing a major dep.
-# Re-evaluate when those crates' upstreams move off the affected package, or
-# when a fix lands upstream.
+# Every ignore needs a `reason`, so the next contributor can tell whether it is
+# still load-bearing. Re-check them when the dependency they name moves.
 ignore = [
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained (author announced no further fixes) but pulled in transitively via egui/epaint_default_fonts; no drop-in replacement yet." },
 ]
 
 [licenses]
-# Permissive SPDX identifiers actually present in the resolved graph.
-# Re-survey with `cargo deny list --layout license` before widening.
+# Permissive SPDX identifiers. Re-survey with `cargo deny list --layout license`
+# before widening; prefer a per-crate entry under `exceptions` to adding here.
 allow = [
     "0BSD",
     "Apache-2.0",
@@ -38,30 +40,29 @@ allow = [
     "MIT",
     "MIT-0",
     "MPL-2.0",
-    "NCSA",
-    "OFL-1.1",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
 ]
 confidence-threshold = 0.93
-
-# Per-crate carve-outs for licenses we don't want to globally allow.
 exceptions = [
-    # Our own GPL-3.0-or-later desktop crate (with App Store exception, see
-    # desktop/LICENSE.App-Store-Exception). Scoping it here
-    # prevents other GPL-3.0 deps from silently slipping in.
+    # An application's own desktop app is GPL-3.0-or-later with an app store
+    # exception (ci/README.md). Scoped to that crate, so a GPL dependency
+    # cannot slip in unnoticed:
     { name = "sapphire-journal-desktop", allow = ["GPL-3.0-or-later"] },
-    # `epaint_default_fonts` ships the Ubuntu font under the Ubuntu Font
-    # Licence 1.0 — fine for redistribution but not worth globally allowing.
-    { name = "epaint_default_fonts", allow = ["Ubuntu-font-1.0"] },
+    # egui's fallback UI font is under the OFL and the Ubuntu Font Licence: they
+    # govern the typefaces it embeds, not code, so they are scoped to this crate
+    # rather than allowed for every dependency.
+    { name = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
 ]
 
 [bans]
-# Duplicate-version warnings are too noisy in real Rust workspaces (every
-# transitively-pulled `syn`/`bitflags`/`hashbrown` version trips it).
+# Duplicate versions are too common in real workspaces to be worth a warning.
 multiple-versions = "allow"
 wildcards = "deny"
+# A `path` dependency without a version (a workspace crate's dev-dependency, or a
+# crate that is not published) is not a wildcard on the registry.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
