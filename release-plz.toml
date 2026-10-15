@@ -17,8 +17,8 @@ git_release_name = "core-v{{ version }}"
 
 [[package]]
 name = "sapphire-journal"
-git_tag_name = "cli-v{{ version }}"
-git_release_name = "cli-v{{ version }}"
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
 
 [[package]]
 name = "sapphire-journal-mcp"

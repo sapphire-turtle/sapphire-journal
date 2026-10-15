@@ -17,8 +17,10 @@ case "$(uname -m)" in
   *) echo "error: unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
+# The CLI's releases are tagged `v*` (`cli-v*` up to 0.12); the desktop's,
+# core's and the others' carry their own prefix.
 VERSION=$(curl -sf "https://api.github.com/repos/${REPO}/releases" \
-  | awk -F'"' '/tag_name.*"cli-v/{print $4; exit}')
+  | awk -F'"' '/"tag_name": *"(cli-)?v[0-9]/{print $4; exit}')
 
 if [ -z "$VERSION" ]; then
   echo "error: failed to fetch latest version" >&2

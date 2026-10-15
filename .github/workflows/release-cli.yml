@@ -14,13 +14,13 @@ on:
       tag:
         required: true
         type: string
-        description: 'Existing release tag to attach binaries to (e.g. cli-v0.11.1).'
+        description: 'Existing release tag to attach binaries to (e.g. v0.13.0).'
   workflow_dispatch:
     inputs:
       tag:
         required: true
         type: string
-        description: 'Existing release tag to attach binaries to (e.g. cli-v0.11.1).'
+        description: 'Existing release tag to attach binaries to (e.g. v0.13.0).'
 
 jobs:
   build:
