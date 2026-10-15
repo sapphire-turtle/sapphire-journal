@@ -19,20 +19,19 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use sapphire_framework::ipc::{RequestCtx, Router, RpcError};
+use sapphire_journal_api::{
+    self as api, ConfigSetParams, EmptyParams, EntryCheckParams, EntryFixParams, EntryGetParams,
+    EntryListParams, EntryModifyParams, EntryNewParams, EntryPrepareParams, EntryRemoveParams,
+    EntryResolveParams, EntrySaveParams, EntryShowParams, EntryTreeParams, JournalSettings,
+};
 use sapphire_journal_core::{
-    cache,
+    JournalState, cache,
     entry::Value,
     journal::Journal,
     ops::{self, EntryFields, EntryListItem, UpdateOption},
     parser::{read_entry, write_entry},
     text_input::{fields as core_fields, filter as core_filter},
     user_config::UserConfig,
-    JournalState,
-};
-use sapphire_journal_api::{
-    self as api, ConfigSetParams, EmptyParams, EntryCheckParams, EntryFixParams, EntryGetParams,
-    EntryListParams, EntryModifyParams, EntryNewParams, EntryPrepareParams, EntryRemoveParams,
-    EntryResolveParams, EntrySaveParams, EntryShowParams, EntryTreeParams, JournalSettings,
 };
 use serde::de::DeserializeOwned;
 
@@ -55,25 +54,105 @@ pub type StateSource = Arc<dyn Fn() -> std::io::Result<Arc<Mutex<JournalState>>>
 /// write touched to `on_write`.
 pub fn register(router: Router, source: StateSource, on_write: Option<WriteObserver>) -> Router {
     let methods = Methods { source, on_write };
-    let router = route(router, api::ENTRY_LIST, &methods, JournalMethods::entry_list);
-    let router = route(router, api::ENTRY_TREE, &methods, JournalMethods::entry_tree);
-    let router = route(router, api::ENTRY_SHOW, &methods, JournalMethods::entry_show);
+    let router = route(
+        router,
+        api::ENTRY_LIST,
+        &methods,
+        JournalMethods::entry_list,
+    );
+    let router = route(
+        router,
+        api::ENTRY_TREE,
+        &methods,
+        JournalMethods::entry_tree,
+    );
+    let router = route(
+        router,
+        api::ENTRY_SHOW,
+        &methods,
+        JournalMethods::entry_show,
+    );
     let router = route(router, api::ENTRY_NEW, &methods, JournalMethods::entry_new);
-    let router = route(router, api::ENTRY_MODIFY, &methods, JournalMethods::entry_modify);
-    let router = route(router, api::ENTRY_CHECK, &methods, JournalMethods::entry_check);
+    let router = route(
+        router,
+        api::ENTRY_MODIFY,
+        &methods,
+        JournalMethods::entry_modify,
+    );
+    let router = route(
+        router,
+        api::ENTRY_CHECK,
+        &methods,
+        JournalMethods::entry_check,
+    );
     let router = route(router, api::ENTRY_FIX, &methods, JournalMethods::entry_fix);
-    let router = route(router, api::ENTRY_REMOVE, &methods, JournalMethods::entry_remove);
-    let router = route(router, api::CACHE_INFO, &methods, JournalMethods::cache_info);
-    let router = route(router, api::CACHE_SYNC, &methods, JournalMethods::cache_sync);
-    let router = route(router, api::CACHE_REBUILD, &methods, JournalMethods::cache_rebuild);
+    let router = route(
+        router,
+        api::ENTRY_REMOVE,
+        &methods,
+        JournalMethods::entry_remove,
+    );
+    let router = route(
+        router,
+        api::CACHE_INFO,
+        &methods,
+        JournalMethods::cache_info,
+    );
+    let router = route(
+        router,
+        api::CACHE_SYNC,
+        &methods,
+        JournalMethods::cache_sync,
+    );
+    let router = route(
+        router,
+        api::CACHE_REBUILD,
+        &methods,
+        JournalMethods::cache_rebuild,
+    );
     let router = route(router, api::ENTRY_GET, &methods, JournalMethods::entry_get);
-    let router = route(router, api::ENTRY_RESOLVE, &methods, JournalMethods::entry_resolve);
-    let router = route(router, api::ENTRY_PREPARE, &methods, JournalMethods::entry_prepare);
-    let router = route(router, api::ENTRY_SAVE, &methods, JournalMethods::entry_save);
-    let router = route(router, api::CACHE_CLEAN, &methods, JournalMethods::cache_clean);
-    let router = route(router, api::CONFIG_SHOW, &methods, JournalMethods::config_show);
-    let router = route(router, api::CONFIG_GET, &methods, JournalMethods::config_get);
-    route(router, api::CONFIG_SET, &methods, JournalMethods::config_set)
+    let router = route(
+        router,
+        api::ENTRY_RESOLVE,
+        &methods,
+        JournalMethods::entry_resolve,
+    );
+    let router = route(
+        router,
+        api::ENTRY_PREPARE,
+        &methods,
+        JournalMethods::entry_prepare,
+    );
+    let router = route(
+        router,
+        api::ENTRY_SAVE,
+        &methods,
+        JournalMethods::entry_save,
+    );
+    let router = route(
+        router,
+        api::CACHE_CLEAN,
+        &methods,
+        JournalMethods::cache_clean,
+    );
+    let router = route(
+        router,
+        api::CONFIG_SHOW,
+        &methods,
+        JournalMethods::config_show,
+    );
+    let router = route(
+        router,
+        api::CONFIG_GET,
+        &methods,
+        JournalMethods::config_get,
+    );
+    route(
+        router,
+        api::CONFIG_SET,
+        &methods,
+        JournalMethods::config_set,
+    )
 }
 
 /// What every registered method shares.
@@ -262,7 +341,11 @@ impl JournalMethods {
                 .iter()
                 .map(|(entry, match_flags)| EntryListItem {
                     entry: entry.clone(),
-                    match_flags: if has_filter { Some(match_flags.clone()) } else { None },
+                    match_flags: if has_filter {
+                        Some(match_flags.clone())
+                    } else {
+                        None
+                    },
                 })
                 .collect();
             Ok(serde_json::to_string_pretty(&records)?)
@@ -299,23 +382,36 @@ impl JournalMethods {
             let fm = &entry.frontmatter;
 
             let mut out = format!("# {}\n", entry.title());
-            out.push_str(&format!("created:  {}\n", fm.created_at.format("%Y-%m-%dT%H:%M")));
-            out.push_str(&format!("updated:  {}\n", fm.updated_at.format("%Y-%m-%dT%H:%M")));
+            out.push_str(&format!(
+                "created:  {}\n",
+                fm.created_at.format("%Y-%m-%dT%H:%M")
+            ));
+            out.push_str(&format!(
+                "updated:  {}\n",
+                fm.updated_at.format("%Y-%m-%dT%H:%M")
+            ));
             if !fm.tags.is_empty() {
                 out.push_str(&format!("tags:     {}\n", fm.tags.join(", ")));
             }
             if let Some(task) = &fm.task {
                 let status = task.status.as_str();
                 match task.due {
-                    Some(d) => out.push_str(&format!("task:     {status} (due {})\n", d.format("%Y-%m-%d"))),
-                    None    => out.push_str(&format!("task:     {status}\n")),
+                    Some(d) => out.push_str(&format!(
+                        "task:     {status} (due {})\n",
+                        d.format("%Y-%m-%d")
+                    )),
+                    None => out.push_str(&format!("task:     {status}\n")),
                 }
                 if let Some(ca) = task.closed_at {
                     out.push_str(&format!("closed:   {}\n", ca.format("%Y-%m-%dT%H:%M")));
                 }
             }
             if let Some(event) = &fm.event {
-                out.push_str(&format!("event:    {} – {}\n", event.start.format("%Y-%m-%d"), event.end.format("%Y-%m-%d")));
+                out.push_str(&format!(
+                    "event:    {} – {}\n",
+                    event.start.format("%Y-%m-%d"),
+                    event.end.format("%Y-%m-%d")
+                ));
             }
             out.push('\n');
             out.push_str(&entry.body);
@@ -487,8 +583,7 @@ impl JournalMethods {
     }
 
     pub fn cache_info(&self, _: EmptyParams) -> Result<String, String> {
-        (|| -> anyhow::Result<String> {
-            self.with_state(|s| {
+        self.with_state(|s| {
                 let info = s.cache_info()?;
                 Ok(format!(
                     "path: {}\nschema version: v{} (app: v{})\nfiles tracked: {}\nentries: {}\nunique tags: {}",
@@ -500,18 +595,15 @@ impl JournalMethods {
                     info.unique_tag_count,
                 ))
             })
-        })()
         .map_err(|e| e.to_string())
     }
 
     pub fn cache_sync(&self, _: EmptyParams) -> Result<String, String> {
-        (|| -> anyhow::Result<String> {
-            self.with_state(|s| {
-                s.sync()?;
-                let info = s.cache_info()?;
-                Ok(format!("synced: {} entries", info.entry_count))
-            })
-        })()
+        self.with_state(|s| {
+            s.sync()?;
+            let info = s.cache_info()?;
+            Ok(format!("synced: {} entries", info.entry_count))
+        })
         .map_err(|e| e.to_string())
     }
 
@@ -627,7 +719,10 @@ impl JournalMethods {
         (|| -> anyhow::Result<String> {
             let journal_config = self.with_state(|s| Ok(s.journal.config_path()))?;
             let mut out = String::new();
-            for (heading, path) in [("user config", UserConfig::path()), ("journal config", journal_config)] {
+            for (heading, path) in [
+                ("user config", UserConfig::path()),
+                ("journal config", journal_config),
+            ] {
                 out.push_str(&format!("## {heading}\npath: {}\n", path.display()));
                 match std::fs::read_to_string(&path) {
                     Ok(raw) => out.push_str(raw.trim_end()),
@@ -756,7 +851,10 @@ mod tests {
     fn observer() -> (WriteObserver, Arc<Mutex<Vec<Vec<PathBuf>>>>) {
         let observed: Arc<Mutex<Vec<Vec<PathBuf>>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&observed);
-        (Arc::new(move |paths: &[PathBuf]| sink.lock().unwrap().push(paths.to_vec())), observed)
+        (
+            Arc::new(move |paths: &[PathBuf]| sink.lock().unwrap().push(paths.to_vec())),
+            observed,
+        )
     }
 
     /// The parameters survive the trip the tools send them on: serialized by
@@ -800,7 +898,10 @@ mod tests {
             panic!("a call panicked while holding the journal lock");
         })
         .join();
-        assert!(state.is_poisoned(), "precondition: the mutex should be poisoned");
+        assert!(
+            state.is_poisoned(),
+            "precondition: the mutex should be poisoned"
+        );
 
         let msg = methods
             .entry_new(new_params("After The Panic"))
@@ -814,7 +915,9 @@ mod tests {
         let (obs, observed) = observer();
         let methods = methods.with_write_observer(obs);
 
-        let msg = methods.entry_new(new_params("Original Title")).expect("entry_new failed");
+        let msg = methods
+            .entry_new(new_params("Original Title"))
+            .expect("entry_new failed");
         let created = path_from_created_message(&msg);
 
         let calls = observed.lock().unwrap();
@@ -827,7 +930,9 @@ mod tests {
         let (obs, observed) = observer();
         let methods = methods.with_write_observer(obs);
 
-        let msg = methods.entry_new(new_params("Original Title")).expect("entry_new failed");
+        let msg = methods
+            .entry_new(new_params("Original Title"))
+            .expect("entry_new failed");
         let old_path = path_from_created_message(&msg);
         observed.lock().unwrap().clear(); // isolate the rename notification below
 
@@ -852,7 +957,9 @@ mod tests {
         let (obs, observed) = observer();
         let methods = methods.with_write_observer(obs);
 
-        let msg = methods.entry_new(new_params("Original Title")).expect("entry_new failed");
+        let msg = methods
+            .entry_new(new_params("Original Title"))
+            .expect("entry_new failed");
         let canonical_path = path_from_created_message(&msg);
         observed.lock().unwrap().clear(); // isolate the fix notification below
 
@@ -865,15 +972,23 @@ mod tests {
             .expect("failed to rename fixture file on disk");
 
         let fix_msg = methods
-            .entry_fix(EntryFixParams { entry: EntryRef::Path(mismatched_path.clone()) })
+            .entry_fix(EntryFixParams {
+                entry: EntryRef::Path(mismatched_path.clone()),
+            })
             .expect("entry_fix failed");
-        assert!(fix_msg.starts_with("renamed:"), "expected a rename, got: {fix_msg}");
+        assert!(
+            fix_msg.starts_with("renamed:"),
+            "expected a rename, got: {fix_msg}"
+        );
 
         let calls = observed.lock().unwrap();
         assert_eq!(calls.len(), 1, "rename must notify in exactly one call");
         assert_eq!(calls[0].len(), 2, "rename must carry both paths");
         assert_eq!(calls[0][0], mismatched_path, "old path must come first");
-        assert_ne!(calls[0][1], mismatched_path, "second path must be the new one");
+        assert_ne!(
+            calls[0][1], mismatched_path,
+            "second path must be the new one"
+        );
     }
 
     #[test]
@@ -882,14 +997,19 @@ mod tests {
         let (obs, observed) = observer();
         let methods = methods.with_write_observer(obs);
 
-        let msg = methods.entry_new(new_params("Stable Title")).expect("entry_new failed");
+        let msg = methods
+            .entry_new(new_params("Stable Title"))
+            .expect("entry_new failed");
         let path = path_from_created_message(&msg);
         observed.lock().unwrap().clear(); // isolate the modify notification below
 
         let mut modify = EntryModifyParams::of(EntryRef::Path(path.clone()));
         modify.tags = Some("work".to_owned());
         let modify_msg = methods.entry_modify(modify).expect("entry_modify failed");
-        assert!(modify_msg.starts_with("updated:"), "expected no rename, got: {modify_msg}");
+        assert!(
+            modify_msg.starts_with("updated:"),
+            "expected no rename, got: {modify_msg}"
+        );
 
         let calls = observed.lock().unwrap();
         assert_eq!(*calls, vec![vec![path]]);
@@ -901,12 +1021,16 @@ mod tests {
         let (obs, observed) = observer();
         let methods = methods.with_write_observer(obs);
 
-        let msg = methods.entry_new(new_params("Doomed Entry")).expect("entry_new failed");
+        let msg = methods
+            .entry_new(new_params("Doomed Entry"))
+            .expect("entry_new failed");
         let path = path_from_created_message(&msg);
         observed.lock().unwrap().clear(); // isolate the remove notification below
 
         methods
-            .entry_remove(EntryRemoveParams { entry: EntryRef::Path(path.clone()) })
+            .entry_remove(EntryRemoveParams {
+                entry: EntryRef::Path(path.clone()),
+            })
             .expect("entry_remove failed");
 
         let calls = observed.lock().unwrap();
@@ -916,8 +1040,12 @@ mod tests {
     #[test]
     fn cache_rebuild_keeps_the_entries() {
         let (_dir, methods) = test_methods();
-        methods.entry_new(new_params("Kept")).expect("entry_new failed");
-        let msg = methods.cache_rebuild(EmptyParams {}).expect("cache_rebuild failed");
+        methods
+            .entry_new(new_params("Kept"))
+            .expect("entry_new failed");
+        let msg = methods
+            .cache_rebuild(EmptyParams {})
+            .expect("cache_rebuild failed");
         assert_eq!(msg, "rebuilt: 1 entries indexed");
     }
 }

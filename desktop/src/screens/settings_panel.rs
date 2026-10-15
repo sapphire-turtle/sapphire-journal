@@ -6,9 +6,9 @@
 
 use eframe::egui;
 
+use sapphire_journal_api::{ConfigSetParams, JournalSettings};
 use sapphire_journal_core::journal::DuplicateTitlePolicy;
 use sapphire_journal_core::ops::UpdateOption;
-use sapphire_journal_api::{ConfigSetParams, JournalSettings};
 
 use crate::app::App;
 
@@ -82,11 +82,13 @@ impl SettingsPanelState {
 
     /// The change the form asks for, or why it cannot be sent.
     fn params(&self) -> Result<ConfigSetParams, String> {
-        let sync_interval_minutes = self
-            .sync_interval_minutes
-            .trim()
-            .parse::<u32>()
-            .map_err(|_| "Sync interval must be a non-negative integer (0 to disable).".to_string())?;
+        let sync_interval_minutes =
+            self.sync_interval_minutes
+                .trim()
+                .parse::<u32>()
+                .map_err(|_| {
+                    "Sync interval must be a non-negative integer (0 to disable).".to_string()
+                })?;
         let duplicate_title = match self.duplicate_title.as_str() {
             "allow" => DuplicateTitlePolicy::Allow,
             "error" => DuplicateTitlePolicy::Error,
@@ -168,8 +170,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 
             ui.label("Re-scan interval (minutes; 0 to disable)");
             ui.add(
-                egui::TextEdit::singleline(&mut state.sync_interval_minutes)
-                    .desired_width(80.0),
+                egui::TextEdit::singleline(&mut state.sync_interval_minutes).desired_width(80.0),
             );
 
             ui.add_space(10.0);
@@ -195,7 +196,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(!state.saving, egui::Button::new("Save")).clicked() {
+                    if ui
+                        .add_enabled(!state.saving, egui::Button::new("Save"))
+                        .clicked()
+                    {
                         do_save = true;
                     }
                     if ui.button("Close").clicked() {

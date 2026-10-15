@@ -18,9 +18,11 @@ pub fn parse_tags_csv(tags: Option<&str>) -> Option<Vec<String>> {
 }
 
 pub fn parse_optional_datetime(s: Option<&str>) -> Result<Option<NaiveDateTime>> {
-    s.map(|s| parse_datetime(s).map_err(Error::InvalidInput)).transpose()
+    s.map(|s| parse_datetime(s).map_err(Error::InvalidInput))
+        .transpose()
 }
 
 pub fn parse_optional_datetime_end(s: Option<&str>) -> Result<Option<NaiveDateTime>> {
-    s.map(|s| parse_datetime_end(s).map_err(Error::InvalidInput)).transpose()
+    s.map(|s| parse_datetime_end(s).map_err(Error::InvalidInput))
+        .transpose()
 }

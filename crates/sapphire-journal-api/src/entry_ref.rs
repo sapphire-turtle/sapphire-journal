@@ -55,10 +55,10 @@ impl EntryRef {
             // failing to parse is already handled by falling through below,
             // so don't delete this as redundant with that. Crockford base32
             // is ASCII-only anyway, so this can never reject a real id.
-            if rest.is_ascii() {
-                if let Ok(id) = rest.parse::<GrainId>() {
-                    return EntryRef::Id(id);
-                }
+            if rest.is_ascii()
+                && let Ok(id) = rest.parse::<GrainId>()
+            {
+                return EntryRef::Id(id);
             }
             // Invalid GrainId after `@` — fall through to path/title heuristics.
         }

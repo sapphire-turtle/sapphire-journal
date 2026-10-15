@@ -24,8 +24,7 @@ use eframe::egui;
 /// Bundled Japanese fallback font: Noto Sans JP Regular (SIL OFL 1.1).
 ///
 /// See `assets/fonts/LICENSE-NotoSansJP` for the full license.
-const NOTO_SANS_JP: &[u8] =
-    include_bytes!("../assets/fonts/NotoSansJP-Regular.otf");
+const NOTO_SANS_JP: &[u8] = include_bytes!("../assets/fonts/NotoSansJP-Regular.otf");
 
 const BUNDLED_JP_KEY: &str = "noto_sans_jp";
 

@@ -13,8 +13,13 @@ fn parse(args: &[&str]) -> Cli {
 fn a_bare_invocation_prints_the_help() {
     // The framework's recommendation: nothing starts on a bare invocation;
     // the service manager starts the binary with `serve`.
-    let err = Cli::try_parse_from(["sapphire-journal"]).err().expect("a bare invocation does not parse");
-    assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand);
+    let err = Cli::try_parse_from(["sapphire-journal"])
+        .err()
+        .expect("a bare invocation does not parse");
+    assert_eq!(
+        err.kind(),
+        clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    );
     assert!(matches!(
         parse(&["serve"]).command,
         Command::Framework(FrameworkCommand::Serve)
@@ -47,15 +52,25 @@ fn the_journal_verbs_still_parse_beside_them() {
         parse(&["entry", "list", "today"]).command,
         Command::Entry { .. }
     ));
-    assert!(matches!(parse(&["cache", "info"]).command, Command::Cache { .. }));
-    assert!(matches!(parse(&["config", "show"]).command, Command::Config { .. }));
+    assert!(matches!(
+        parse(&["cache", "info"]).command,
+        Command::Cache { .. }
+    ));
+    assert!(matches!(
+        parse(&["config", "show"]).command,
+        Command::Config { .. }
+    ));
 }
 
 #[test]
 fn the_journal_follows_the_server_not_a_directory() {
     // The server serves one journal; `workspace init|select` picks it.
-    for args in [&["init", "/tmp/j"][..], &["--journal-dir", "/tmp/j", "entry", "list", "today"]] {
-        let parsed = Cli::try_parse_from(std::iter::once("sapphire-journal").chain(args.iter().copied()));
+    for args in [
+        &["init", "/tmp/j"][..],
+        &["--journal-dir", "/tmp/j", "entry", "list", "today"],
+    ] {
+        let parsed =
+            Cli::try_parse_from(std::iter::once("sapphire-journal").chain(args.iter().copied()));
         assert!(parsed.is_err(), "{args:?} should no longer parse");
     }
     assert!(matches!(
@@ -67,5 +82,8 @@ fn the_journal_follows_the_server_not_a_directory() {
 #[test]
 fn the_old_embedding_cache_command_is_gone() {
     let parsed = Cli::try_parse_from(["sapphire-journal", "cache", "embed"]);
-    assert!(parsed.is_err(), "`cache embed` moved to the bridge (`embedding`)");
+    assert!(
+        parsed.is_err(),
+        "`cache embed` moved to the bridge (`embedding`)"
+    );
 }

@@ -4,22 +4,26 @@
 //! caller only needs to handle input-format concerns (CLI arg parsing, JSON
 //! deserialization, etc.) and output formatting.
 
-use std::{cmp::Ordering, path::{Path, PathBuf}, str::FromStr};
+use std::{
+    cmp::Ordering,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use indexmap::IndexMap;
 
-use grain_id::GrainId;
 use chrono::{Datelike as _, Duration, NaiveDateTime};
+use grain_id::GrainId;
 use rusqlite::Connection;
 
 use crate::{
     cache,
-    labels::is_stale,
     entry::{self, Entry, EntryHeader, EventMeta, Frontmatter, TaskMeta},
     entry_ref::EntryRef,
     error::{Error, Result},
     journal::{DuplicateTitlePolicy, Journal, slugify},
     journal_state::JournalState,
+    labels::is_stale,
     parser::{read_entry, render_entry},
     period::Period,
 };
@@ -52,13 +56,13 @@ impl FromStr for SortField {
     type Err = String;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "id"           => Ok(Self::Id),
-            "title"        => Ok(Self::Title),
-            "task_status"  => Ok(Self::TaskStatus),
-            "created_at"   => Ok(Self::CreatedAt),
-            "updated_at"   => Ok(Self::UpdatedAt),
-            "task_due"     => Ok(Self::TaskDue),
-            "event_start"  => Ok(Self::EventStart),
+            "id" => Ok(Self::Id),
+            "title" => Ok(Self::Title),
+            "task_status" => Ok(Self::TaskStatus),
+            "created_at" => Ok(Self::CreatedAt),
+            "updated_at" => Ok(Self::UpdatedAt),
+            "task_due" => Ok(Self::TaskDue),
+            "event_start" => Ok(Self::EventStart),
             other => Err(format!(
                 "unknown sort field `{other}`; expected one of: \
                  id, title, task_status, created_at, updated_at, task_due, event_start"
@@ -79,9 +83,11 @@ impl FromStr for SortOrder {
     type Err = String;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "asc"  => Ok(Self::Asc),
+            "asc" => Ok(Self::Asc),
             "desc" => Ok(Self::Desc),
-            other  => Err(format!("unknown sort order `{other}`; expected `asc` or `desc`")),
+            other => Err(format!(
+                "unknown sort order `{other}`; expected `asc` or `desc`"
+            )),
         }
     }
 }
@@ -118,8 +124,12 @@ impl FieldSelector {
     /// When this returns `true` and a `period` is set, the period is applied to all
     /// timestamp fields simultaneously (OR — "all-fields" fallback).
     pub fn is_empty(&self) -> bool {
-        !self.task_overdue && !self.task_in_progress && !self.task_unstarted
-            && !self.event_span && !self.created_at && !self.updated_at
+        !self.task_overdue
+            && !self.task_in_progress
+            && !self.task_unstarted
+            && !self.event_span
+            && !self.created_at
+            && !self.updated_at
     }
 
     /// Return a selector with all fields enabled — equivalent to the `--active` CLI flag.
@@ -129,12 +139,12 @@ impl FieldSelector {
     /// carry no timestamp relationship to the period.
     pub fn active() -> Self {
         Self {
-            task_overdue:     true,
+            task_overdue: true,
             task_in_progress: true,
-            task_unstarted:   false,
-            event_span:       true,
-            created_at:       true,
-            updated_at:       true,
+            task_unstarted: false,
+            event_span: true,
+            created_at: true,
+            updated_at: true,
         }
     }
 }
@@ -216,48 +226,67 @@ impl EntryFilter {
 
         let timestamp_ok = if self.has_timestamp_filter() {
             let event_start_val = entry.frontmatter.event.as_ref().map(|e| e.start);
-            let event_end_val   = entry.frontmatter.event.as_ref().map(|e| e.end);
-            let created_val     = Some(entry.frontmatter.created_at);
-            let updated_val     = Some(entry.frontmatter.updated_at);
+            let event_end_val = entry.frontmatter.event.as_ref().map(|e| e.end);
+            let created_val = Some(entry.frontmatter.created_at);
+            let updated_val = Some(entry.frontmatter.updated_at);
 
             if let Some(p) = &self.period {
                 // No selectors at all → apply period to all timestamp fields simultaneously (OR).
                 // Any explicit selector (including semantic task selectors) disables this fallback.
                 let all = self.fields.is_empty();
-                if (all || self.fields.event_span) && p.overlaps_event(event_start_val, event_end_val) { labels.push(MatchFlag::EventSpan); }
-                if (all || self.fields.created_at) && p.matches(created_val)                           { labels.push(MatchFlag::CreatedAt); }
-                if (all || self.fields.updated_at) && p.matches(updated_val)                           { labels.push(MatchFlag::UpdatedAt); }
+                if (all || self.fields.event_span)
+                    && p.overlaps_event(event_start_val, event_end_val)
+                {
+                    labels.push(MatchFlag::EventSpan);
+                }
+                if (all || self.fields.created_at) && p.matches(created_val) {
+                    labels.push(MatchFlag::CreatedAt);
+                }
+                if (all || self.fields.updated_at) && p.matches(updated_val) {
+                    labels.push(MatchFlag::UpdatedAt);
+                }
 
                 // task_overdue: incomplete task with due ≤ period end
-                if self.fields.task_overdue {
-                    if let Period::Range(_, end) = p {
-                        let is_overdue = entry.frontmatter.task.as_ref().is_some_and(|t| {
-                            t.closed_at.is_none() && t.due.is_some_and(|due| due <= *end)
-                        });
-                        if is_overdue { labels.push(MatchFlag::TaskOverdue); }
+                if self.fields.task_overdue
+                    && let Period::Range(_, end) = p
+                {
+                    let is_overdue = entry.frontmatter.task.as_ref().is_some_and(|t| {
+                        t.closed_at.is_none() && t.due.is_some_and(|due| due <= *end)
+                    });
+                    if is_overdue {
+                        labels.push(MatchFlag::TaskOverdue);
                     }
                 }
 
                 // task_in_progress: incomplete task with started_at ≤ period end
-                if self.fields.task_in_progress {
-                    if let Period::Range(_, end) = p {
-                        let is_in_progress = entry.frontmatter.task.as_ref().is_some_and(|t| {
-                            t.closed_at.is_none() && t.started_at.is_some_and(|sa| sa <= *end)
-                        });
-                        if is_in_progress { labels.push(MatchFlag::TaskInProgress); }
+                if self.fields.task_in_progress
+                    && let Period::Range(_, end) = p
+                {
+                    let is_in_progress = entry.frontmatter.task.as_ref().is_some_and(|t| {
+                        t.closed_at.is_none() && t.started_at.is_some_and(|sa| sa <= *end)
+                    });
+                    if is_in_progress {
+                        labels.push(MatchFlag::TaskInProgress);
                     }
                 }
 
                 // task_unstarted: task that exists but has not been started (period not applied)
                 if self.fields.task_unstarted {
-                    let is_unstarted = entry.frontmatter.task.as_ref().is_some_and(|t| {
-                        t.started_at.is_none() && t.closed_at.is_none()
-                    });
-                    if is_unstarted { labels.push(MatchFlag::TaskUnstarted); }
+                    let is_unstarted = entry
+                        .frontmatter
+                        .task
+                        .as_ref()
+                        .is_some_and(|t| t.started_at.is_none() && t.closed_at.is_none());
+                    if is_unstarted {
+                        labels.push(MatchFlag::TaskUnstarted);
+                    }
                 }
             } else {
                 // No period: period-field flags → check that the field exists (is set)
-                if self.fields.event_span && (event_start_val.is_some() || event_end_val.is_some()) { labels.push(MatchFlag::EventSpan); }
+                if self.fields.event_span && (event_start_val.is_some() || event_end_val.is_some())
+                {
+                    labels.push(MatchFlag::EventSpan);
+                }
                 // created_at / updated_at are always set on every entry → no useful existence check
 
                 // task_overdue: incomplete task with due < now
@@ -266,23 +295,33 @@ impl EntryFilter {
                     let is_overdue = entry.frontmatter.task.as_ref().is_some_and(|t| {
                         t.closed_at.is_none() && t.due.is_some_and(|due| due < now)
                     });
-                    if is_overdue { labels.push(MatchFlag::TaskOverdue); }
+                    if is_overdue {
+                        labels.push(MatchFlag::TaskOverdue);
+                    }
                 }
 
                 // task_in_progress: incomplete task with started_at set
                 if self.fields.task_in_progress {
-                    let is_in_progress = entry.frontmatter.task.as_ref().is_some_and(|t| {
-                        t.closed_at.is_none() && t.started_at.is_some()
-                    });
-                    if is_in_progress { labels.push(MatchFlag::TaskInProgress); }
+                    let is_in_progress = entry
+                        .frontmatter
+                        .task
+                        .as_ref()
+                        .is_some_and(|t| t.closed_at.is_none() && t.started_at.is_some());
+                    if is_in_progress {
+                        labels.push(MatchFlag::TaskInProgress);
+                    }
                 }
 
                 // task_unstarted: task that exists but has not been started
                 if self.fields.task_unstarted {
-                    let is_unstarted = entry.frontmatter.task.as_ref().is_some_and(|t| {
-                        t.started_at.is_none() && t.closed_at.is_none()
-                    });
-                    if is_unstarted { labels.push(MatchFlag::TaskUnstarted); }
+                    let is_unstarted = entry
+                        .frontmatter
+                        .task
+                        .as_ref()
+                        .is_some_and(|t| t.started_at.is_none() && t.closed_at.is_none());
+                    if is_unstarted {
+                        labels.push(MatchFlag::TaskUnstarted);
+                    }
                 }
             }
 
@@ -302,7 +341,9 @@ impl EntryFilter {
         };
 
         let tags_ok = if !self.tags.is_empty() {
-            self.tags.iter().all(|tag| entry.frontmatter.tags.contains(tag))
+            self.tags
+                .iter()
+                .all(|tag| entry.frontmatter.tags.contains(tag))
         } else {
             true
         };
@@ -311,13 +352,17 @@ impl EntryFilter {
         // above — an entry that matched a selector is still excluded unless the
         // matching include-flag restores it.
         let hidden_ok = self.include_hidden || entry.frontmatter.hidden != Some(true);
-        let stale_ok = self.include_stale || !is_stale(
-            entry.frontmatter.task.as_ref(),
-            entry.frontmatter.updated_at,
-            Duration::days(self.stale_after_days as i64),
-        );
+        let stale_ok = self.include_stale
+            || !is_stale(
+                entry.frontmatter.task.as_ref(),
+                entry.frontmatter.updated_at,
+                Duration::days(self.stale_after_days as i64),
+            );
 
-        (timestamp_ok && status_ok && tags_ok && hidden_ok && stale_ok, labels)
+        (
+            timestamp_ok && status_ok && tags_ok && hidden_ok && stale_ok,
+            labels,
+        )
     }
 }
 
@@ -346,17 +391,17 @@ pub fn build_entry_tree(entries: Vec<(EntryHeader, Vec<MatchFlag>)>) -> Vec<Entr
         .map(|(e, _)| {
             e.frontmatter
                 .parent_id
-                .map_or(true, |pid| !id_index.contains_key(&pid))
+                .is_none_or(|pid| !id_index.contains_key(&pid))
         })
         .collect();
 
     // Build children lists: parent_index → [child_indices] in input order.
     let mut children_of: Vec<Vec<usize>> = vec![Vec::new(); entries.len()];
     for (i, (e, _)) in entries.iter().enumerate() {
-        if let Some(pid) = e.frontmatter.parent_id {
-            if let Some(&parent_i) = id_index.get(&pid) {
-                children_of[parent_i].push(i);
-            }
+        if let Some(pid) = e.frontmatter.parent_id
+            && let Some(&parent_i) = id_index.get(&pid)
+        {
+            children_of[parent_i].push(i);
         }
     }
 
@@ -375,7 +420,11 @@ pub fn build_entry_tree(entries: Vec<(EntryHeader, Vec<MatchFlag>)>) -> Vec<Entr
             .iter()
             .map(|&ci| build_node(ci, slots, children_of))
             .collect();
-        EntryTreeNode { entry, match_flags: labels, children }
+        EntryTreeNode {
+            entry,
+            match_flags: labels,
+            children,
+        }
     }
 
     (0..slots.len())
@@ -409,11 +458,13 @@ pub fn fill_ancestor_entries(
 
     // Load the full entry index for parent lookups (cache already synced by caller).
     let all_map: HashMap<GrainId, EntryHeader> = {
-        let all = state.open_conn()
+        let all = state
+            .open_conn()
             .ok()
             .and_then(|c| cache::list_entries_from_cache(&c).ok())
             .unwrap_or_else(|| {
-                state.journal
+                state
+                    .journal
                     .collect_entries()
                     .unwrap_or_default()
                     .iter()
@@ -482,18 +533,25 @@ pub fn list_entries(
         }
     }
     // Fallback: read from disk when the cache is unavailable.
-    let entries: Vec<EntryHeader> = state.journal
+    let entries: Vec<EntryHeader> = state
+        .journal
         .collect_entries()?
         .iter()
         .filter_map(|p| match read_entry(p) {
             Ok(e) => Some(entry::header(e)),
-            Err(e) => { eprintln!("warn: {} — {e}", p.display()); None }
+            Err(e) => {
+                eprintln!("warn: {} — {e}", p.display());
+                None
+            }
         })
         .collect();
     apply_filter_and_sort(entries, filter)
 }
 
-fn apply_filter_and_sort(entries: Vec<EntryHeader>, filter: &EntryFilter) -> Result<Vec<(EntryHeader, Vec<MatchFlag>)>> {
+fn apply_filter_and_sort(
+    entries: Vec<EntryHeader>,
+    filter: &EntryFilter,
+) -> Result<Vec<(EntryHeader, Vec<MatchFlag>)>> {
     let has_filter = filter.has_any_filter();
     let mut result = Vec::new();
     for entry in entries {
@@ -506,7 +564,11 @@ fn apply_filter_and_sort(entries: Vec<EntryHeader>, filter: &EntryFilter) -> Res
     if filter.sort_by != SortField::Unsorted {
         result.sort_by(|(a, _), (b, _)| {
             let ord = sort_cmp(a, b, filter.sort_by);
-            if filter.sort_order == SortOrder::Desc { ord.reverse() } else { ord }
+            if filter.sort_order == SortOrder::Desc {
+                ord.reverse()
+            } else {
+                ord
+            }
         });
     }
     Ok(result)
@@ -518,13 +580,23 @@ fn sort_cmp(a: &EntryHeader, b: &EntryHeader, field: SortField) -> Ordering {
         SortField::Id => a.id().cmp(&b.id()),
         SortField::Title => a.title().cmp(b.title()),
         SortField::TaskStatus => {
-            let sa = a.frontmatter.task.as_ref().map(|t| t.status.as_str()).unwrap_or("");
-            let sb = b.frontmatter.task.as_ref().map(|t| t.status.as_str()).unwrap_or("");
+            let sa = a
+                .frontmatter
+                .task
+                .as_ref()
+                .map(|t| t.status.as_str())
+                .unwrap_or("");
+            let sb = b
+                .frontmatter
+                .task
+                .as_ref()
+                .map(|t| t.status.as_str())
+                .unwrap_or("");
             sa.cmp(sb)
         }
-        SortField::CreatedAt  => a.frontmatter.created_at.cmp(&b.frontmatter.created_at),
-        SortField::UpdatedAt  => a.frontmatter.updated_at.cmp(&b.frontmatter.updated_at),
-        SortField::TaskDue    => cmp_opt(
+        SortField::CreatedAt => a.frontmatter.created_at.cmp(&b.frontmatter.created_at),
+        SortField::UpdatedAt => a.frontmatter.updated_at.cmp(&b.frontmatter.updated_at),
+        SortField::TaskDue => cmp_opt(
             a.frontmatter.task.as_ref().and_then(|t| t.due),
             b.frontmatter.task.as_ref().and_then(|t| t.due),
         ),
@@ -539,12 +611,11 @@ fn sort_cmp(a: &EntryHeader, b: &EntryHeader, field: SortField) -> Ordering {
 fn cmp_opt<T: Ord>(a: Option<T>, b: Option<T>) -> Ordering {
     match (a, b) {
         (Some(x), Some(y)) => x.cmp(&y),
-        (Some(_), None)    => Ordering::Less,
-        (None,    Some(_)) => Ordering::Greater,
-        (None,    None)    => Ordering::Equal,
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
     }
 }
-
 
 // ── EntryFields ───────────────────────────────────────────────────────────────
 
@@ -642,7 +713,13 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
         let closed_at = fields
             .task_closed_at
             .or_else(|| inactive.then(|| chrono::Local::now().naive_local()));
-        Some(TaskMeta { due: fields.task_due, status, started_at, closed_at, extra: IndexMap::new() })
+        Some(TaskMeta {
+            due: fields.task_due,
+            status,
+            started_at,
+            closed_at,
+            extra: IndexMap::new(),
+        })
     } else {
         None
     };
@@ -650,7 +727,11 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
     let event = if fields.event_start.is_some() || fields.event_end.is_some() {
         let start = fields.event_start.or(fields.event_end).unwrap();
         let end = fields.event_end.or(fields.event_start).unwrap();
-        Some(EventMeta { start, end, extra: IndexMap::new() })
+        Some(EventMeta {
+            start,
+            end,
+            extra: IndexMap::new(),
+        })
     } else {
         None
     };
@@ -670,14 +751,19 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
         extra: IndexMap::new(),
     };
 
-    let dest = journal.entries_root()?
+    let dest = journal
+        .entries_root()?
         .join(year.to_string())
         .join(entry_filename_from_frontmatter(id, &frontmatter));
     if dest.exists() {
         return Err(Error::EntryAlreadyExists(dest.display().to_string()));
     }
 
-    let entry = Entry { path: dest.clone(), frontmatter, body };
+    let entry = Entry {
+        path: dest.clone(),
+        frontmatter,
+        body,
+    };
 
     std::fs::create_dir_all(dest.parent().unwrap())?;
     std::fs::write(&dest, render_entry(&entry))?;
@@ -695,7 +781,11 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
 /// Fails with [`Error::DuplicateTitle`] if another entry already uses the new
 /// title.  Fails with [`Error::EntryNotFound`] / [`Error::EntryNotFoundByTitle`]
 /// if `fields.parent` cannot be resolved.
-pub fn update_entry(path: &Path, conn: &Connection, fields: EntryFields) -> Result<Option<PathBuf>> {
+pub fn update_entry(
+    path: &Path,
+    conn: &Connection,
+    fields: EntryFields,
+) -> Result<Option<PathBuf>> {
     let mut entry = read_entry(path)?;
 
     if let Some(t) = fields.title {
@@ -769,7 +859,11 @@ pub fn update_entry(path: &Path, conn: &Connection, fields: EntryFields) -> Resu
         let event = entry.frontmatter.event.get_or_insert_with(|| {
             let start = fields.event_start.or(fields.event_end).unwrap();
             let end = fields.event_end.or(fields.event_start).unwrap();
-            EventMeta { start, end, extra: IndexMap::new() }
+            EventMeta {
+                start,
+                end,
+                extra: IndexMap::new(),
+            }
         });
         if let Some(s) = fields.event_start {
             event.start = s;
@@ -795,9 +889,9 @@ pub fn resolve_parent_id(conn: &Connection, parent: Option<&EntryRef>) -> Result
         None => Ok(None),
         Some(EntryRef::Id(id)) => Ok(Some(*id)),
         Some(EntryRef::Path(path)) => Ok(Some(read_entry(path)?.frontmatter.id)),
-        Some(EntryRef::Title(title)) => {
-            Ok(Some(cache::find_entry_by_title(conn, title)?.frontmatter.id))
-        }
+        Some(EntryRef::Title(title)) => Ok(Some(
+            cache::find_entry_by_title(conn, title)?.frontmatter.id,
+        )),
     }
 }
 
@@ -850,12 +944,11 @@ pub fn prepare_new_entry(journal: &Journal, parent_id: Option<GrainId>) -> Resul
 
 // ── EntryRef resolution ───────────────────────────────────────────────────────
 
-/// Resolve an [`EntryRef`] to a concrete path, opening the journal when needed.
+/// Resolve an [`EntryRef`] to a concrete path using an already-open cache connection.
 ///
 /// - `Path` variant: returned as-is.
 /// - `Id` variant: looks up by exact GrainId via the cache.
 /// - `Title` variant: looks up by exact title (case-sensitive) via the cache.
-/// Resolve an [`EntryRef`] to an absolute path using an already-open cache connection.
 pub fn resolve_entry(entry_ref: &EntryRef, conn: &Connection) -> Result<PathBuf> {
     match entry_ref {
         EntryRef::Path(p) => Ok(p.clone()),
@@ -879,8 +972,9 @@ pub enum CheckIssue {
 impl CheckIssue {
     pub fn as_str(&self) -> String {
         match self {
-            CheckIssue::FilenameMismatch { expected_filename } =>
-                format!("filename mismatch — should be `{expected_filename}`"),
+            CheckIssue::FilenameMismatch { expected_filename } => {
+                format!("filename mismatch — should be `{expected_filename}`")
+            }
         }
     }
 }
@@ -894,11 +988,16 @@ impl CheckIssue {
 pub fn check_entry(path: &Path) -> Result<Vec<CheckIssue>> {
     let entry = read_entry(path)?;
     let expected = entry_filename_from_frontmatter(entry.frontmatter.id, &entry.frontmatter);
-    let actual = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+    let actual = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
 
     let mut issues = Vec::new();
     if actual != expected {
-        issues.push(CheckIssue::FilenameMismatch { expected_filename: expected });
+        issues.push(CheckIssue::FilenameMismatch {
+            expected_filename: expected,
+        });
     }
     Ok(issues)
 }
@@ -907,10 +1006,11 @@ pub fn check_entry(path: &Path) -> Result<Vec<CheckIssue>> {
 
 /// If the entry has a task with `in_progress` status and no `started_at`, set it to now.
 fn sync_started_at(entry: &mut Entry) {
-    if let Some(task) = &mut entry.frontmatter.task {
-        if task.status == "in_progress" && task.started_at.is_none() {
-            task.started_at = Some(chrono::Local::now().naive_local());
-        }
+    if let Some(task) = &mut entry.frontmatter.task
+        && task.status == "in_progress"
+        && task.started_at.is_none()
+    {
+        task.started_at = Some(chrono::Local::now().naive_local());
     }
 }
 
@@ -1014,7 +1114,11 @@ mod tests {
     }
 
     /// Build a minimal [EntryHeader] with the given task/hidden/updated_at.
-    fn header(task: Option<TaskMetaView>, hidden: Option<bool>, updated_at: chrono::NaiveDateTime) -> EntryHeader {
+    fn header(
+        task: Option<TaskMetaView>,
+        hidden: Option<bool>,
+        updated_at: chrono::NaiveDateTime,
+    ) -> EntryHeader {
         let frontmatter = FrontmatterView {
             id: grain_id::GrainId::now_unix(),
             parent_id: None,
@@ -1027,27 +1131,51 @@ mod tests {
             event: None,
             hidden,
         };
-        EntryHeader { path: "/t".into(), frontmatter, flags: Vec::new() }
+        EntryHeader {
+            path: "/t".into(),
+            frontmatter,
+            flags: Vec::new(),
+        }
     }
 
     fn open_task() -> TaskMetaView {
-        TaskMetaView { due: None, status: "open".into(), started_at: None, closed_at: None }
+        TaskMetaView {
+            due: None,
+            status: "open".into(),
+            started_at: None,
+            closed_at: None,
+        }
     }
 
     fn closed_task(closed_at: chrono::NaiveDateTime) -> TaskMetaView {
-        TaskMetaView { due: None, status: "done".into(), started_at: None, closed_at: Some(closed_at) }
+        TaskMetaView {
+            due: None,
+            status: "done".into(),
+            started_at: None,
+            closed_at: Some(closed_at),
+        }
     }
 
     #[test]
     fn stale_task_is_excluded_by_default() {
-        let f = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let f = EntryFilter {
+            stale_after_days: 30,
+            ..Default::default()
+        };
         let h = header(Some(open_task()), None, now() - Duration::days(40));
-        assert!(!f.matches(&h).0, "a stale incomplete task must be excluded by default");
+        assert!(
+            !f.matches(&h).0,
+            "a stale incomplete task must be excluded by default"
+        );
     }
 
     #[test]
     fn include_stale_restores_a_stale_task() {
-        let f = EntryFilter { stale_after_days: 30, include_stale: true, ..Default::default() };
+        let f = EntryFilter {
+            stale_after_days: 30,
+            include_stale: true,
+            ..Default::default()
+        };
         let h = header(Some(open_task()), None, now() - Duration::days(40));
         assert!(f.matches(&h).0, "include_stale must restore a stale task");
     }
@@ -1056,25 +1184,46 @@ mod tests {
     fn hidden_entry_is_excluded_by_default() {
         let f = EntryFilter::default();
         let h = header(None, Some(true), now());
-        assert!(!f.matches(&h).0, "a hidden entry must be excluded by default");
+        assert!(
+            !f.matches(&h).0,
+            "a hidden entry must be excluded by default"
+        );
     }
 
     #[test]
     fn include_hidden_restores_a_hidden_entry() {
-        let f = EntryFilter { include_hidden: true, ..Default::default() };
+        let f = EntryFilter {
+            include_hidden: true,
+            ..Default::default()
+        };
         let h = header(None, Some(true), now());
-        assert!(f.matches(&h).0, "include_hidden must restore a hidden entry");
+        assert!(
+            f.matches(&h).0,
+            "include_hidden must restore a hidden entry"
+        );
     }
 
     #[test]
     fn custom_stale_after_days_threshold_takes_effect() {
         let updated = now() - Duration::days(10);
         // 10 days old: stale under a 5-day threshold, not under a 30-day one.
-        let strict = EntryFilter { stale_after_days: 5, ..Default::default() };
-        let lenient = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let strict = EntryFilter {
+            stale_after_days: 5,
+            ..Default::default()
+        };
+        let lenient = EntryFilter {
+            stale_after_days: 30,
+            ..Default::default()
+        };
         let h = header(Some(open_task()), None, updated);
-        assert!(!strict.matches(&h).0, "10-day-old task is stale under a 5-day threshold");
-        assert!(lenient.matches(&h).0, "10-day-old task is not stale under a 30-day threshold");
+        assert!(
+            !strict.matches(&h).0,
+            "10-day-old task is stale under a 5-day threshold"
+        );
+        assert!(
+            lenient.matches(&h).0,
+            "10-day-old task is not stale under a 30-day threshold"
+        );
     }
 
     #[test]
@@ -1087,15 +1236,24 @@ mod tests {
             ..Default::default()
         };
         let h = header(Some(open_task()), None, now() - Duration::days(40));
-        assert!(!f.matches(&h).0, "the stale gate must override other match reasons");
+        assert!(
+            !f.matches(&h).0,
+            "the stale gate must override other match reasons"
+        );
     }
 
     #[test]
     fn closed_task_is_not_excluded_even_when_old() {
-        let f = EntryFilter { stale_after_days: 30, ..Default::default() };
+        let f = EntryFilter {
+            stale_after_days: 30,
+            ..Default::default()
+        };
         let old = now() - Duration::days(400);
         let h = header(Some(closed_task(old)), None, old);
-        assert!(f.matches(&h).0, "a closed task is never stale, so it stays included");
+        assert!(
+            f.matches(&h).0,
+            "a closed task is never stale, so it stays included"
+        );
     }
 
     #[test]

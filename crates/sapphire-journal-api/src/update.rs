@@ -31,7 +31,10 @@ impl<T> UpdateOption<T> {
 }
 
 impl<T: serde::Serialize> serde::Serialize for UpdateOption<T> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
         match self {
             UpdateOption::Set(v) => serializer.serialize_some(v),
             UpdateOption::Clear | UpdateOption::Unchanged => serializer.serialize_none(),
@@ -40,9 +43,11 @@ impl<T: serde::Serialize> serde::Serialize for UpdateOption<T> {
 }
 
 impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for UpdateOption<T> {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
         Ok(match Option::<T>::deserialize(deserializer)? {
-            None    => UpdateOption::Clear,
+            None => UpdateOption::Clear,
             Some(v) => UpdateOption::Set(v),
         })
     }

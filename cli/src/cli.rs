@@ -10,8 +10,12 @@ use crate::commands;
 /// level. A bare invocation prints the help; the service manager starts the
 /// binary with `serve`.
 #[derive(Parser)]
-#[command(name = "sapphire-journal",
-    arg_required_else_help = true, about = "Markdown-based task and note manager", version)]
+#[command(
+    name = "sapphire-journal",
+    arg_required_else_help = true,
+    about = "Markdown-based task and note manager",
+    version
+)]
 ///
 /// Every command but `serve` works on the journal the running server serves;
 /// `workspace init|select` chooses it.

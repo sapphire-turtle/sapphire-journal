@@ -11,14 +11,14 @@ use std::sync::Arc;
 use std::sync::mpsc;
 
 use grain_id::GrainId;
-use sapphire_journal_core::entry::{Entry, EntryHeader};
-use sapphire_journal_core::entry_ref::EntryRef;
-use sapphire_journal_core::ops::{EntryListItem, UpdateOption};
-use sapphire_journal_mcp::JournalClient;
 use sapphire_journal_api::{
     self as api, ConfigSetParams, EmptyParams, EntryGetParams, EntryListParams, EntryModifyParams,
     EntryPrepareParams, EntryRemoveParams, EntrySaveParams, JournalSettings,
 };
+use sapphire_journal_core::entry::{Entry, EntryHeader};
+use sapphire_journal_core::entry_ref::EntryRef;
+use sapphire_journal_core::ops::{EntryListItem, UpdateOption};
+use sapphire_journal_mcp::JournalClient;
 
 /// What came back from the server.
 pub enum Reply {
@@ -114,7 +114,9 @@ impl Api {
         let client = Arc::clone(&self.client);
         self.spawn(async move {
             let path = entry.path.clone();
-            let result = client.call(api::ENTRY_SAVE, EntrySaveParams { entry }).await;
+            let result = client
+                .call(api::ENTRY_SAVE, EntrySaveParams { entry })
+                .await;
             Reply::Saved(path, result.map(PathBuf::from))
         });
     }
@@ -123,7 +125,9 @@ impl Api {
         let client = Arc::clone(&self.client);
         self.spawn(async move {
             let entry = EntryRef::Path(path.clone());
-            let result = client.call(api::ENTRY_REMOVE, EntryRemoveParams { entry }).await;
+            let result = client
+                .call(api::ENTRY_REMOVE, EntryRemoveParams { entry })
+                .await;
             Reply::Removed(path, result.map(|_| ()))
         });
     }
@@ -157,7 +161,9 @@ impl Api {
 
     pub fn settings(&self) {
         let client = Arc::clone(&self.client);
-        self.spawn(async move { Reply::Settings(client.read(api::CONFIG_GET, EmptyParams {}).await) });
+        self.spawn(
+            async move { Reply::Settings(client.read(api::CONFIG_GET, EmptyParams {}).await) },
+        );
     }
 
     pub fn set_settings(&self, params: ConfigSetParams) {

@@ -30,7 +30,10 @@ pub struct UserConfig {
     /// How often to run periodic sync, in minutes.
     ///
     /// Defaults to 10 minutes. Set to `0` to disable.
-    #[serde(default = "default_sync_interval_minutes", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "default_sync_interval_minutes",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub sync_interval_minutes: Option<u32>,
 
     /// Unknown fields preserved for round-trip TOML compatibility.
@@ -60,7 +63,9 @@ impl UserConfig {
     ///
     /// Resolves to `$XDG_CONFIG_HOME/sapphire-journal/config.toml`.
     pub fn path() -> PathBuf {
-        xdg_config_home().join("sapphire-journal").join("config.toml")
+        xdg_config_home()
+            .join("sapphire-journal")
+            .join("config.toml")
     }
 
     /// Load the user config from disk, then apply environment variable overrides.
@@ -86,25 +91,26 @@ impl UserConfig {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content = toml::to_string_pretty(self).map_err(|e| Error::InvalidConfig(e.to_string()))?;
+        let content =
+            toml::to_string_pretty(self).map_err(|e| Error::InvalidConfig(e.to_string()))?;
         std::fs::write(&path, content)?;
         Ok(())
     }
 
     fn apply_env_overrides(&mut self) {
-        if let Ok(v) = std::env::var("SAPPHIRE_JOURNAL_SYNC_INTERVAL_MINUTES") {
-            if let Ok(n) = v.parse::<u32>() {
-                self.sync_interval_minutes = Some(n);
-            }
+        if let Ok(v) = std::env::var("SAPPHIRE_JOURNAL_SYNC_INTERVAL_MINUTES")
+            && let Ok(n) = v.parse::<u32>()
+        {
+            self.sync_interval_minutes = Some(n);
         }
     }
 }
 
 fn xdg_config_home() -> PathBuf {
-    if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        if !dir.is_empty() {
-            return PathBuf::from(dir);
-        }
+    if let Ok(dir) = std::env::var("XDG_CONFIG_HOME")
+        && !dir.is_empty()
+    {
+        return PathBuf::from(dir);
     }
     if let Ok(home) = std::env::var("HOME") {
         return PathBuf::from(home).join(".config");

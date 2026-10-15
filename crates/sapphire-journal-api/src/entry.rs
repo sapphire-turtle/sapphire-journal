@@ -1,7 +1,7 @@
 //! An entry, as the journal's files hold it and its methods carry it.
 
-use grain_id::GrainId;
 use chrono::NaiveDateTime;
+use grain_id::GrainId;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -62,7 +62,11 @@ pub struct Frontmatter<V = serde_json::Value> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskMeta<V = serde_json::Value> {
     /// Due date/time.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::eod::opt")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "naive_datetime_serde::eod::opt"
+    )]
     pub due: Option<NaiveDateTime>,
 
     /// Task status. Conventional values: open | in_progress | done | cancelled | archived
@@ -71,12 +75,20 @@ pub struct TaskMeta<V = serde_json::Value> {
 
     /// Timestamp when the task was started (status → in_progress).
     /// Set automatically by `entry modify`; can be overridden manually.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "naive_datetime_serde::opt"
+    )]
     pub started_at: Option<NaiveDateTime>,
 
     /// Timestamp when the task was closed (status → done/cancelled/archived).
     /// Set automatically by `entry modify`; can be overridden manually.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "naive_datetime_serde::opt"
+    )]
     pub closed_at: Option<NaiveDateTime>,
 
     /// Unknown task fields preserved for round-trip compatibility.
@@ -128,7 +140,7 @@ impl<V> Entry<V> {
 
     /// Returns the title: frontmatter title (if non-empty) → file stem → "(untitled)".
     pub fn title(&self) -> &str {
-        return &self.frontmatter.title;
+        &self.frontmatter.title
     }
 }
 
@@ -137,18 +149,35 @@ impl<V> Entry<V> {
 /// Unlike [`TaskMeta`], this type has no `extra` field and can derive [`Serialize`] cleanly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskMetaView {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::eod::opt")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "naive_datetime_serde::eod::opt"
+    )]
     pub due: Option<NaiveDateTime>,
     pub status: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "naive_datetime_serde::opt"
+    )]
     pub started_at: Option<NaiveDateTime>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "naive_datetime_serde::opt")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "naive_datetime_serde::opt"
+    )]
     pub closed_at: Option<NaiveDateTime>,
 }
 
 impl<V> From<TaskMeta<V>> for TaskMetaView {
     fn from(t: TaskMeta<V>) -> Self {
-        TaskMetaView { due: t.due, status: t.status, started_at: t.started_at, closed_at: t.closed_at }
+        TaskMetaView {
+            due: t.due,
+            status: t.status,
+            started_at: t.started_at,
+            closed_at: t.closed_at,
+        }
     }
 }
 
@@ -165,7 +194,10 @@ pub struct EventMetaView {
 
 impl<V> From<EventMeta<V>> for EventMetaView {
     fn from(e: EventMeta<V>) -> Self {
-        EventMetaView { start: e.start, end: e.end }
+        EventMetaView {
+            start: e.start,
+            end: e.end,
+        }
     }
 }
 
@@ -293,7 +325,9 @@ mod naive_datetime_serde {
             d: D,
         ) -> Result<Option<NaiveDateTime>, D::Error> {
             let raw = String::deserialize(d)?;
-            super::parse_with_fallback(&raw, 0, 0).map(Some).map_err(serde::de::Error::custom)
+            super::parse_with_fallback(&raw, 0, 0)
+                .map(Some)
+                .map_err(serde::de::Error::custom)
         }
     }
 

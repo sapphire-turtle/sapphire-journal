@@ -20,11 +20,7 @@ struct CursorMem(NaiveDate);
 
 /// Shows a calendar-icon button.  When clicked, opens a popup containing a
 /// month grid; clicking a day writes the formatted date into `buf`.
-pub fn date_picker_button(
-    ui: &mut egui::Ui,
-    id_salt: &str,
-    buf: &mut String,
-) -> egui::Response {
+pub fn date_picker_button(ui: &mut egui::Ui, id_salt: &str, buf: &mut String) -> egui::Response {
     let icon = egui::Image::new(icons::calendar())
         .fit_to_exact_size(egui::vec2(14.0, 14.0))
         .tint(ui.visuals().text_color());

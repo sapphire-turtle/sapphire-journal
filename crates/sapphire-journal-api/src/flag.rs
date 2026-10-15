@@ -46,79 +46,90 @@ impl EntryFlag {
     ];
 
     const NAMES: [&'static str; 13] = [
-        "overdue", "new", "updated", "event", "event_closed", "done", "cancelled",
-        "in_progress", "archived", "open", "note", "stale", "hidden",
+        "overdue",
+        "new",
+        "updated",
+        "event",
+        "event_closed",
+        "done",
+        "cancelled",
+        "in_progress",
+        "archived",
+        "open",
+        "note",
+        "stale",
+        "hidden",
     ];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Overdue     => "overdue",
-            Self::New         => "new",
-            Self::Updated     => "updated",
-            Self::Event       => "event",
+            Self::Overdue => "overdue",
+            Self::New => "new",
+            Self::Updated => "updated",
+            Self::Event => "event",
             Self::EventClosed => "event_closed",
-            Self::Done        => "done",
-            Self::Cancelled   => "cancelled",
-            Self::InProgress  => "in_progress",
-            Self::Archived    => "archived",
-            Self::Open        => "open",
-            Self::Note        => "note",
-            Self::Stale       => "stale",
-            Self::Hidden      => "hidden",
+            Self::Done => "done",
+            Self::Cancelled => "cancelled",
+            Self::InProgress => "in_progress",
+            Self::Archived => "archived",
+            Self::Open => "open",
+            Self::Note => "note",
+            Self::Stale => "stale",
+            Self::Hidden => "hidden",
         }
     }
 
     pub fn to_emoji(self) -> &'static str {
         match self {
-            Self::Overdue     => "⏰",
-            Self::New         => "🆕",
-            Self::Updated     => "✏️",
-            Self::Event       => "📅",
+            Self::Overdue => "⏰",
+            Self::New => "🆕",
+            Self::Updated => "✏️",
+            Self::Event => "📅",
             Self::EventClosed => "🗓️",
-            Self::Done        => "✅",
-            Self::Cancelled   => "❌",
-            Self::InProgress  => "🔄",
-            Self::Archived    => "📦",
-            Self::Open        => "⬜",
-            Self::Note        => "📝",
-            Self::Stale       => "🕰️",
-            Self::Hidden      => "🙈",
+            Self::Done => "✅",
+            Self::Cancelled => "❌",
+            Self::InProgress => "🔄",
+            Self::Archived => "📦",
+            Self::Open => "⬜",
+            Self::Note => "📝",
+            Self::Stale => "🕰️",
+            Self::Hidden => "🙈",
         }
     }
 
     pub fn to_nerd(self) -> &'static str {
         match self {
-            Self::Overdue     => "󱦟",
-            Self::New         => "󰐕",
-            Self::Updated     => "󰏫",
-            Self::Event       => "󰃭",
+            Self::Overdue => "󱦟",
+            Self::New => "󰐕",
+            Self::Updated => "󰏫",
+            Self::Event => "󰃭",
             Self::EventClosed => "󰄻",
-            Self::Done        => "󰄲",
-            Self::Cancelled   => "󰜺",
-            Self::InProgress  => "󰔛",
-            Self::Archived    => "󰀼",
-            Self::Open        => "󰄱",
-            Self::Note        => "󰈙",
-            Self::Stale       => "󰔚",
-            Self::Hidden      => "󰈈",
+            Self::Done => "󰄲",
+            Self::Cancelled => "󰜺",
+            Self::InProgress => "󰔛",
+            Self::Archived => "󰀼",
+            Self::Open => "󰄱",
+            Self::Note => "󰈙",
+            Self::Stale => "󰔚",
+            Self::Hidden => "󰈈",
         }
     }
 
     pub fn to_initial(self) -> char {
         match self {
-            Self::Overdue     => '!',
-            Self::New         => '+',
-            Self::Updated     => '~',
-            Self::Event       => 'E',
+            Self::Overdue => '!',
+            Self::New => '+',
+            Self::Updated => '~',
+            Self::Event => 'E',
             Self::EventClosed => 'e',
-            Self::Done        => 'D',
-            Self::Cancelled   => 'C',
-            Self::InProgress  => 'I',
-            Self::Archived    => 'A',
-            Self::Open        => 'O',
-            Self::Note        => 'N',
-            Self::Stale       => 'S',
-            Self::Hidden      => 'H',
+            Self::Done => 'D',
+            Self::Cancelled => 'C',
+            Self::InProgress => 'I',
+            Self::Archived => 'A',
+            Self::Open => 'O',
+            Self::Note => 'N',
+            Self::Stale => 'S',
+            Self::Hidden => 'H',
         }
     }
 }
@@ -160,13 +171,13 @@ pub enum MatchFlag {
 impl MatchFlag {
     pub fn as_str(self) -> &'static str {
         match self {
-            MatchFlag::TaskOverdue    => "task_overdue",
+            MatchFlag::TaskOverdue => "task_overdue",
             MatchFlag::TaskInProgress => "task_in_progress",
-            MatchFlag::TaskUnstarted  => "task_unstarted",
-            MatchFlag::EventSpan      => "event_span",
-            MatchFlag::CreatedAt      => "created",
-            MatchFlag::UpdatedAt      => "updated",
-            MatchFlag::ParentOfMatch  => "parent_of_match",
+            MatchFlag::TaskUnstarted => "task_unstarted",
+            MatchFlag::EventSpan => "event_span",
+            MatchFlag::CreatedAt => "created",
+            MatchFlag::UpdatedAt => "updated",
+            MatchFlag::ParentOfMatch => "parent_of_match",
         }
     }
 }

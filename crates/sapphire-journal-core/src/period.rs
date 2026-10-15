@@ -54,7 +54,9 @@ pub fn parse_datetime(s: &str) -> Result<NaiveDateTime, String> {
     if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Ok(d.and_hms_opt(0, 0, 0).unwrap());
     }
-    Err(format!("`{s}` is not a valid date/datetime — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"))
+    Err(format!(
+        "`{s}` is not a valid date/datetime — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"
+    ))
 }
 
 /// Like [`parse_datetime`] but date-only input is treated as end-of-day (23:59:59).
@@ -68,7 +70,9 @@ pub fn parse_datetime_end(s: &str) -> Result<NaiveDateTime, String> {
     if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Ok(d.and_hms_opt(23, 59, 59).unwrap());
     }
-    Err(format!("`{s}` is not a valid date/datetime — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"))
+    Err(format!(
+        "`{s}` is not a valid date/datetime — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"
+    ))
 }
 
 /// Return the ISO week range (Monday..Sunday) for the given date.
@@ -81,7 +85,11 @@ fn iso_week_range(d: NaiveDate) -> (NaiveDate, NaiveDate) {
 /// Return the first and last day of the month containing `d`.
 fn month_range(year: i32, month: u32) -> (NaiveDate, NaiveDate) {
     let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
-    let (ny, nm) = if month == 12 { (year + 1, 1u32) } else { (year, month + 1) };
+    let (ny, nm) = if month == 12 {
+        (year + 1, 1u32)
+    } else {
+        (year, month + 1)
+    };
     let last = NaiveDate::from_ymd_opt(ny, nm, 1).unwrap() - Duration::days(1);
     (first, last)
 }
@@ -97,10 +105,16 @@ fn day_range(start: NaiveDate, end: NaiveDate) -> Period {
 /// Parse an ISO week string like `2026-W15` into (Monday, Sunday).
 fn parse_iso_week(s: &str) -> Result<(NaiveDate, NaiveDate), String> {
     // Expected format: YYYY-Www
-    let (year_s, w_s) = s.split_once("-W").or_else(|| s.split_once("-w"))
+    let (year_s, w_s) = s
+        .split_once("-W")
+        .or_else(|| s.split_once("-w"))
         .ok_or_else(|| format!("`{s}` is not a valid ISO week — expected YYYY-Www"))?;
-    let year: i32 = year_s.parse().map_err(|_| format!("`{year_s}` is not a valid year"))?;
-    let week: u32 = w_s.parse().map_err(|_| format!("`{w_s}` is not a valid week number"))?;
+    let year: i32 = year_s
+        .parse()
+        .map_err(|_| format!("`{year_s}` is not a valid year"))?;
+    let week: u32 = w_s
+        .parse()
+        .map_err(|_| format!("`{w_s}` is not a valid week number"))?;
     if week == 0 || week > 53 {
         return Err(format!("week number {week} is out of range (1–53)"));
     }
@@ -186,12 +200,10 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
     // ISO time interval: slash-separated range
     // (e.g. "2026-03-01/2026-03-07" or "2026-03-01T09:00/2026-03-01T17:00")
     if let Some((left, right)) = s.split_once('/') {
-        let start = parse_datetime(left).map_err(|_| {
-            format!("`{left}` is not a valid date/datetime in period `{s}`")
-        })?;
-        let end = parse_datetime_end(right).map_err(|_| {
-            format!("`{right}` is not a valid date/datetime in period `{s}`")
-        })?;
+        let start = parse_datetime(left)
+            .map_err(|_| format!("`{left}` is not a valid date/datetime in period `{s}`"))?;
+        let end = parse_datetime_end(right)
+            .map_err(|_| format!("`{right}` is not a valid date/datetime in period `{s}`"))?;
         return Ok(Period::Range(start, end));
     }
 
@@ -207,22 +219,21 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
     }
 
     // Year-month: YYYY-MM
-    if let Some((year_s, month_s)) = s.split_once('-') {
-        if let (Ok(year), Ok(month)) = (year_s.parse::<i32>(), month_s.parse::<u32>()) {
-            if (1..=12).contains(&month) {
-                let (first, last) = month_range(year, month);
-                return Ok(day_range(first, last));
-            }
-        }
+    if let Some((year_s, month_s)) = s.split_once('-')
+        && let (Ok(year), Ok(month)) = (year_s.parse::<i32>(), month_s.parse::<u32>())
+        && (1..=12).contains(&month)
+    {
+        let (first, last) = month_range(year, month);
+        return Ok(day_range(first, last));
     }
 
     // Year only: YYYY
-    if let Ok(year) = s.parse::<i32>() {
-        if (1000..=9999).contains(&year) {
-            let first = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
-            let last = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
-            return Ok(day_range(first, last));
-        }
+    if let Ok(year) = s.parse::<i32>()
+        && (1000..=9999).contains(&year)
+    {
+        let first = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
+        let last = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
+        return Ok(day_range(first, last));
     }
 
     Err(format!(

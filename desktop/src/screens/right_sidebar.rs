@@ -46,13 +46,12 @@ pub fn draw_overlay(ctx: &egui::Context, home: &mut HomeState, top_offset: f32) 
 
 fn draw_tab_bar(home: &mut HomeState, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        for (tab, label) in [(RightTab::Metadata, "Metadata")] {
-            if ui
-                .selectable_label(home.right_sidebar_tab == tab, label)
-                .clicked()
-            {
-                home.right_sidebar_tab = tab;
-            }
+        let (tab, label) = (RightTab::Metadata, "Metadata");
+        if ui
+            .selectable_label(home.right_sidebar_tab == tab, label)
+            .clicked()
+        {
+            home.right_sidebar_tab = tab;
         }
     });
 }
@@ -89,7 +88,11 @@ fn draw_metadata_tab(home: &HomeState, ui: &mut egui::Ui) {
 }
 
 fn draw_title(header: &EntryHeader, ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new(&header.frontmatter.title).strong().size(15.0));
+    ui.label(
+        egui::RichText::new(&header.frontmatter.title)
+            .strong()
+            .size(15.0),
+    );
 }
 
 fn draw_field<F>(ui: &mut egui::Ui, label: &str, value: F)

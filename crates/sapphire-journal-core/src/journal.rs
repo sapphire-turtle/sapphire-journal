@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use grain_id::GrainId;
 use chrono::Datelike as _;
+use grain_id::GrainId;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -46,7 +46,9 @@ impl Journal {
         std::fs::write(journal_dir.join("config.toml"), config)?;
         // Ignore the cache directory (SQLite etc.) while keeping config.toml tracked.
         std::fs::write(journal_dir.join(".gitignore"), "cache/\n")?;
-        Ok(Journal { root: root.to_path_buf() })
+        Ok(Journal {
+            root: root.to_path_buf(),
+        })
     }
 
     pub fn journal_dir(&self) -> PathBuf {
@@ -84,7 +86,9 @@ impl Journal {
     pub fn find_entry_by_id(&self, id_prefix: &str) -> Result<PathBuf> {
         let mut matches = Vec::new();
         for dir in std::iter::once(self.entries_root()?).chain(self.year_subdirs()?) {
-            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            let Ok(rd) = std::fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in rd.filter_map(|e| e.ok()) {
                 let p = entry.path();
                 if p.extension().and_then(|s| s.to_str()) == Some("md")
@@ -121,12 +125,12 @@ impl Journal {
         let mut dirs = Vec::new();
         for entry in std::fs::read_dir(&root)?.filter_map(|e| e.ok()) {
             let p = entry.path();
-            if p.is_dir() {
-                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                    if !name.starts_with('.') && name.chars().all(|c| c.is_ascii_digit()) {
-                        dirs.push(p);
-                    }
-                }
+            if p.is_dir()
+                && let Some(name) = p.file_name().and_then(|n| n.to_str())
+                && !name.starts_with('.')
+                && name.chars().all(|c| c.is_ascii_digit())
+            {
+                dirs.push(p);
             }
         }
         Ok(dirs)
@@ -159,8 +163,8 @@ impl Journal {
     /// Write `config` to `.sapphire-journal/config.toml`, keeping the tables
     /// other than `[journal]` it was read with.
     pub fn save_config(&self, config: &JournalConfig) -> Result<()> {
-        let content = toml::to_string_pretty(config)
-            .map_err(|e| Error::InvalidConfig(e.to_string()))?;
+        let content =
+            toml::to_string_pretty(config).map_err(|e| Error::InvalidConfig(e.to_string()))?;
         std::fs::write(self.config_path(), content)?;
         Ok(())
     }
@@ -206,7 +210,9 @@ impl Journal {
 }
 
 fn collect_md_in(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    let Ok(rd) = std::fs::read_dir(dir) else { return Ok(()) };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Ok(());
+    };
     for entry in rd.filter_map(|e| e.ok()) {
         let p = entry.path();
         if p.extension().and_then(|s| s.to_str()) == Some("md") {
@@ -242,7 +248,9 @@ pub struct JournalSection {
 
     /// **Deprecated.** The cache ID is now derived from the journal root path hash.
     /// Kept for backward-compatible deserialization; ignored at runtime.
-    #[deprecated(note = "cache ID is now derived from the journal root path; this field is ignored")]
+    #[deprecated(
+        note = "cache ID is now derived from the journal root path; this field is ignored"
+    )]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<Uuid>,
 

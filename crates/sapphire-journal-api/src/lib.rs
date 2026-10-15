@@ -135,7 +135,10 @@ mod tests {
         }"#;
         let entry: Entry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.frontmatter.extra["mood"], "good");
-        assert_eq!(entry.frontmatter.task.as_ref().unwrap().extra["priority"], 2);
+        assert_eq!(
+            entry.frontmatter.task.as_ref().unwrap().extra["priority"],
+            2
+        );
         let back: Entry = serde_json::from_str(&serde_json::to_string(&entry).unwrap()).unwrap();
         assert_eq!(back.frontmatter.extra["mood"], "good");
     }

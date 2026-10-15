@@ -44,8 +44,12 @@ fn main() -> eframe::Result<()> {
         .build()
         .expect("a tokio runtime");
     let config = ClientConfig::new(APP).expect("the runtime directory and this executable's path");
-    let journal_client =
-        JournalClient::new(APP.app_name, "desktop", APP.version, config.endpoints.app.clone());
+    let journal_client = JournalClient::new(
+        APP.app_name,
+        "desktop",
+        APP.version,
+        config.endpoints.app.clone(),
+    );
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -67,7 +71,12 @@ fn main() -> eframe::Result<()> {
             let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(move || ctx.request_repaint());
             let framework = FrameworkClient::spawn(runtime.handle(), config, Arc::clone(&repaint));
             let (api, replies) = Api::new(runtime.handle().clone(), journal_client, repaint);
-            Ok(Box::new(App::new(runtime, api, replies, SyncPanel::new(framework))))
+            Ok(Box::new(App::new(
+                runtime,
+                api,
+                replies,
+                SyncPanel::new(framework),
+            )))
         }),
     )
 }

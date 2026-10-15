@@ -323,7 +323,10 @@ impl eframe::App for App {
         // Re-read the list on its own now and then, and wake up for it even
         // if nothing else happens.
         if self.tab == Tab::Journal
-            && self.home.last_listed.is_none_or(|t| t.elapsed() >= REFRESH_EVERY)
+            && self
+                .home
+                .last_listed
+                .is_none_or(|t| t.elapsed() >= REFRESH_EVERY)
         {
             // A switch in the Sync tab may have changed the journal.
             self.api.settings();

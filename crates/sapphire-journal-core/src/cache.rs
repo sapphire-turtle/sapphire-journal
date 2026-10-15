@@ -37,8 +37,8 @@ use std::{
 };
 
 use grain_id::GrainId;
-use rusqlite::{params, Connection, OptionalExtension as _};
-use sapphire_track::{file_stamp, FileStamp};
+use rusqlite::{Connection, OptionalExtension as _, params};
+use sapphire_track::{FileStamp, file_stamp};
 
 use crate::{
     error::{Error, Result},
@@ -128,15 +128,22 @@ pub struct CacheInfo {
 /// Collect cache statistics for display.
 pub fn cache_info(journal: &Journal, conn: &Connection) -> Result<CacheInfo> {
     let db_path = db_path(&journal.cache_dir()?);
-    let schema_version =
-        conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+    let schema_version = conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
     let file_count =
         conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))? as u64;
-    let entry_count =
-        conn.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get::<_, i64>(0))? as u64;
-    let unique_tag_count =
-        conn.query_row("SELECT COUNT(DISTINCT tag) FROM tags", [], |row| row.get::<_, i64>(0))? as u64;
-    Ok(CacheInfo { db_path, schema_version, file_count, entry_count, unique_tag_count })
+    let entry_count = conn.query_row("SELECT COUNT(*) FROM entries", [], |row| {
+        row.get::<_, i64>(0)
+    })? as u64;
+    let unique_tag_count = conn.query_row("SELECT COUNT(DISTINCT tag) FROM tags", [], |row| {
+        row.get::<_, i64>(0)
+    })? as u64;
+    Ok(CacheInfo {
+        db_path,
+        schema_version,
+        file_count,
+        entry_count,
+        unique_tag_count,
+    })
 }
 
 /// The redb change-detection store versions before 0.13 kept beside the entry
@@ -149,7 +156,9 @@ const OLD_TRACK_FILE: &str = "track_v1.redb";
 pub fn stale_files(journal: &Journal) -> Result<Vec<(PathBuf, u64)>> {
     let cache_dir = journal.cache_dir()?;
     let current = format!("cache_v{SCHEMA_VERSION}.db");
-    let Ok(rd) = std::fs::read_dir(&cache_dir) else { return Ok(Vec::new()) };
+    let Ok(rd) = std::fs::read_dir(&cache_dir) else {
+        return Ok(Vec::new());
+    };
     let mut stale: Vec<(PathBuf, u64)> = rd
         .filter_map(|e| e.ok())
         .filter(|e| {
@@ -242,7 +251,7 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
         let path_str = path.to_string_lossy();
         let needs_update = db_files
             .get(path_str.as_ref())
-            .map_or(true, |&stored| stored != *mtime);
+            .is_none_or(|&stored| stored != *mtime);
 
         if needs_update {
             match read_entry(path) {
@@ -255,10 +264,7 @@ pub fn sync_cache(journal: &Journal, conn: &Connection) -> Result<()> {
                 }
                 Err(e) => {
                     upsert_stamp(conn, path_str.as_ref(), *mtime)?;
-                    conn.execute(
-                        "DELETE FROM entries WHERE path = ?1",
-                        [path_str.as_ref()],
-                    )?;
+                    conn.execute("DELETE FROM entries WHERE path = ?1", [path_str.as_ref()])?;
                     eprintln!("warn: {}: {e}", path.display());
                 }
             }
@@ -314,13 +320,12 @@ pub fn find_entry_by_id(conn: &Connection, id: GrainId) -> Result<crate::entry::
 }
 
 /// Look up an entry by its exact title.
-pub fn find_entry_by_title(
-    conn: &Connection,
-    title: &str,
-) -> Result<crate::entry::Entry> {
+pub fn find_entry_by_title(conn: &Connection, title: &str) -> Result<crate::entry::Entry> {
     let mut stmt = conn.prepare("SELECT id, path FROM entries WHERE title = ?1")?;
     let rows: Vec<(GrainId, String)> = stmt
-        .query_map([title], |row| Ok((row.get::<_, GrainId>(0)?, row.get::<_, String>(1)?)))?
+        .query_map([title], |row| {
+            Ok((row.get::<_, GrainId>(0)?, row.get::<_, String>(1)?))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     match rows.len() {
@@ -340,8 +345,8 @@ pub fn find_entry_by_title(
 
 /// Read all entries from the cache as [`EntryHeader`] structs (no body).
 pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::EntryHeader>> {
-    use chrono::NaiveDateTime;
     use crate::entry::{EntryHeader, EventMetaView, FrontmatterView, TaskMetaView};
+    use chrono::NaiveDateTime;
 
     let mut tag_map: HashMap<GrainId, Vec<String>> = HashMap::new();
     {
@@ -356,9 +361,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
         }
     }
 
-    let parse_dt = |s: &str| {
-        NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default()
-    };
+    let parse_dt = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default();
     let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
         s.as_deref()
             .and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
@@ -393,9 +396,22 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let mut result = Vec::with_capacity(rows.len());
-    for (id, parent_id, path, title, slug, created_at, updated_at,
-         task_status, task_due, task_started_at, task_closed_at,
-         event_start, event_end, hidden) in rows
+    for (
+        id,
+        parent_id,
+        path,
+        title,
+        slug,
+        created_at,
+        updated_at,
+        task_status,
+        task_due,
+        task_started_at,
+        task_closed_at,
+        event_start,
+        event_end,
+        hidden,
+    ) in rows
     {
         let tags = tag_map.remove(&id).unwrap_or_default();
 
@@ -437,7 +453,11 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
             frontmatter.updated_at,
             chrono::Duration::days(crate::labels::STALE_AFTER_DAYS_DEFAULT as i64),
         );
-        result.push(EntryHeader { path, frontmatter, flags });
+        result.push(EntryHeader {
+            path,
+            frontmatter,
+            flags,
+        });
     }
 
     Ok(result)
@@ -467,17 +487,26 @@ pub fn upsert_entry_from_path(conn: &Connection, path: &Path) -> Result<()> {
 
 // ── internals ─────────────────────────────────────────────────────────────────
 
-fn fetch_full_entry(
-    conn: &Connection,
-    id: GrainId,
-) -> Result<crate::entry::Entry> {
+fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entry> {
+    use crate::entry::{Entry, EventMeta, Frontmatter, TaskMeta};
     use chrono::NaiveDateTime;
     use indexmap::IndexMap;
-    use crate::entry::{Entry, EventMeta, Frontmatter, TaskMeta};
 
-    let (parent_id, path_str, title, slug, created_at, updated_at,
-         task_status, task_due, task_started_at, task_closed_at,
-         event_start, event_end, hidden) = conn.query_row(
+    let (
+        parent_id,
+        path_str,
+        title,
+        slug,
+        created_at,
+        updated_at,
+        task_status,
+        task_due,
+        task_started_at,
+        task_closed_at,
+        event_start,
+        event_end,
+        hidden,
+    ) = conn.query_row(
         "SELECT parent_id, path, title, slug, created_at, updated_at,
                 task_status, task_due, task_started_at, task_closed_at,
                 event_start, event_end, hidden
@@ -507,11 +536,10 @@ fn fetch_full_entry(
         .query_map([id], |row| row.get(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let parse_dt = |s: &str| {
-        NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default()
-    };
+    let parse_dt = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default();
     let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
-        s.as_deref().and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+        s.as_deref()
+            .and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
     };
 
     let task = task_status.map(|status| TaskMeta {
@@ -523,7 +551,11 @@ fn fetch_full_entry(
     });
 
     let event = match (parse_dt_opt(event_start), parse_dt_opt(event_end)) {
-        (Some(start), Some(end)) => Some(EventMeta { start, end, extra: IndexMap::new() }),
+        (Some(start), Some(end)) => Some(EventMeta {
+            start,
+            end,
+            extra: IndexMap::new(),
+        }),
         _ => None,
     };
 
@@ -542,7 +574,11 @@ fn fetch_full_entry(
     };
 
     // Body is not stored in the cache; callers that need it should read from disk.
-    Ok(Entry { path: PathBuf::from(path_str), frontmatter, body: String::new() })
+    Ok(Entry {
+        path: PathBuf::from(path_str),
+        frontmatter,
+        body: String::new(),
+    })
 }
 
 /// Re-mint `entry`'s id (and rename its file) until no *other* on-disk entry
@@ -588,10 +624,8 @@ fn increment_until_free(
             break;
         }
         entry.frontmatter.id = entry.frontmatter.id.increment();
-        let new_name = crate::ops::entry_filename_from_frontmatter(
-            entry.frontmatter.id,
-            &entry.frontmatter,
-        );
+        let new_name =
+            crate::ops::entry_filename_from_frontmatter(entry.frontmatter.id, &entry.frontmatter);
         let new_path = entry.path.with_file_name(new_name);
         std::fs::rename(&entry.path, &new_path)?;
         entry.path = new_path;
@@ -632,15 +666,25 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
             fm.created_at.format("%Y-%m-%dT%H:%M").to_string(),
             fm.updated_at.format("%Y-%m-%dT%H:%M").to_string(),
             fm.task.as_ref().map(|t| t.status.clone()),
-            fm.task.as_ref().and_then(|t| t.due)
+            fm.task
+                .as_ref()
+                .and_then(|t| t.due)
                 .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
-            fm.task.as_ref().and_then(|t| t.started_at)
+            fm.task
+                .as_ref()
+                .and_then(|t| t.started_at)
                 .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
-            fm.task.as_ref().and_then(|t| t.closed_at)
+            fm.task
+                .as_ref()
+                .and_then(|t| t.closed_at)
                 .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
-            fm.event.as_ref().map(|e| e.start.format("%Y-%m-%dT%H:%M").to_string()),
-            fm.event.as_ref().map(|e| e.end.format("%Y-%m-%dT%H:%M").to_string()),
-            fm.hidden.map(|h| i64::from(h)),
+            fm.event
+                .as_ref()
+                .map(|e| e.start.format("%Y-%m-%dT%H:%M").to_string()),
+            fm.event
+                .as_ref()
+                .map(|e| e.end.format("%Y-%m-%dT%H:%M").to_string()),
+            fm.hidden.map(i64::from),
         ],
     )?;
 
@@ -663,7 +707,10 @@ fn stored_stamps(conn: &Connection) -> Result<HashMap<String, FileStamp>> {
         .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
-                FileStamp { mtime_ns: row.get(1)?, len: row.get::<_, i64>(2)? as u64 },
+                FileStamp {
+                    mtime_ns: row.get(1)?,
+                    len: row.get::<_, i64>(2)? as u64,
+                },
             ))
         })?
         .collect::<rusqlite::Result<HashMap<_, _>>>()?;
@@ -738,7 +785,11 @@ mod tests {
         // The pre-rename state, already indexed (mirrors what entry_new left
         // behind before the title change).
         let old_path = tmp.path().join("before.md");
-        let old_entry = Entry { path: old_path.clone(), frontmatter: frontmatter(id, "before"), body: String::new() };
+        let old_entry = Entry {
+            path: old_path.clone(),
+            frontmatter: frontmatter(id, "before"),
+            body: String::new(),
+        };
         write_fixture(&old_entry);
         upsert_entry(&conn, &old_entry).unwrap();
 
@@ -746,12 +797,22 @@ mod tests {
         // old path gone.
         let new_path = tmp.path().join("after.md");
         std::fs::rename(&old_path, &new_path).unwrap();
-        let renamed = Entry { path: new_path.clone(), frontmatter: frontmatter(id, "after"), body: String::new() };
+        let renamed = Entry {
+            path: new_path.clone(),
+            frontmatter: frontmatter(id, "after"),
+            body: String::new(),
+        };
 
         let result = increment_until_free(&conn, renamed).unwrap();
 
-        assert_eq!(result.frontmatter.id, id, "a same-entry rename must not mint a new id");
-        assert_eq!(result.path, new_path, "no id change means no further rename either");
+        assert_eq!(
+            result.frontmatter.id, id,
+            "a same-entry rename must not mint a new id"
+        );
+        assert_eq!(
+            result.path, new_path,
+            "no id change means no further rename either"
+        );
     }
 
     /// A copy-pasted `.md` file that happens to reuse an id, with the
@@ -767,20 +828,40 @@ mod tests {
         // The original entry: indexed, and — unlike the rename case — its
         // file is still on disk.
         let original_path = tmp.path().join("original.md");
-        let original = Entry { path: original_path.clone(), frontmatter: frontmatter(id, "original"), body: String::new() };
+        let original = Entry {
+            path: original_path.clone(),
+            frontmatter: frontmatter(id, "original"),
+            body: String::new(),
+        };
         write_fixture(&original);
         upsert_entry(&conn, &original).unwrap();
 
         // A copy-pasted duplicate: same id, different path, also on disk.
         let copy_path = tmp.path().join("copy.md");
-        let copy = Entry { path: copy_path.clone(), frontmatter: frontmatter(id, "copy"), body: String::new() };
+        let copy = Entry {
+            path: copy_path.clone(),
+            frontmatter: frontmatter(id, "copy"),
+            body: String::new(),
+        };
         write_fixture(&copy);
 
         let result = increment_until_free(&conn, copy).unwrap();
 
-        assert_ne!(result.frontmatter.id, id, "a real duplicate must get a new id");
-        assert_ne!(result.path, copy_path, "the duplicate's file must be renamed to match its new id");
-        assert!(result.path.exists(), "the renamed file must exist at its reported path");
-        assert!(original_path.exists(), "the original entry's file must be untouched");
+        assert_ne!(
+            result.frontmatter.id, id,
+            "a real duplicate must get a new id"
+        );
+        assert_ne!(
+            result.path, copy_path,
+            "the duplicate's file must be renamed to match its new id"
+        );
+        assert!(
+            result.path.exists(),
+            "the renamed file must exist at its reported path"
+        );
+        assert!(
+            original_path.exists(),
+            "the original entry's file must be untouched"
+        );
     }
 }

@@ -5,7 +5,7 @@
 
 use chrono::Duration;
 
-use crate::labels::{entry_flags, STALE_AFTER_DAYS_DEFAULT};
+use crate::labels::{STALE_AFTER_DAYS_DEFAULT, entry_flags};
 
 pub use sapphire_journal_api::{EntryHeader, EventMetaView, FrontmatterView, TaskMetaView};
 
@@ -34,5 +34,9 @@ pub fn header(entry: Entry) -> EntryHeader {
         fm.updated_at,
         Duration::days(STALE_AFTER_DAYS_DEFAULT as i64),
     );
-    EntryHeader { path: entry.path.to_string_lossy().into_owned(), frontmatter: fm, flags }
+    EntryHeader {
+        path: entry.path.to_string_lossy().into_owned(),
+        frontmatter: fm,
+        flags,
+    }
 }

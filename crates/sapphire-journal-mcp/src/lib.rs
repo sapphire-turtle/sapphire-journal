@@ -14,6 +14,6 @@ pub mod client;
 pub mod methods;
 pub mod tools;
 
-pub use methods::{JournalMethods, StateSource, WriteObserver, register};
 pub use client::JournalClient;
+pub use methods::{JournalMethods, StateSource, WriteObserver, register};
 pub use tools::{JournalTools, service};

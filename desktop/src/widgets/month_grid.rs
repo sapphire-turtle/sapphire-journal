@@ -106,7 +106,11 @@ impl<'a> MonthGrid<'a> {
 
         // ── Header bar: month nav + Today + Clear ───────────────────────
         ui.horizontal(|ui| {
-            if ui.small_button("◀").on_hover_text("Previous month").clicked() {
+            if ui
+                .small_button("◀")
+                .on_hover_text("Previous month")
+                .clicked()
+            {
                 *cursor = add_months(*cursor, -1);
             }
             let label = format!("{} {}", month_name(cursor.month()), cursor.year());
@@ -121,10 +125,18 @@ impl<'a> MonthGrid<'a> {
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("Clear").on_hover_text("Show all entries").clicked() {
+                if ui
+                    .small_button("Clear")
+                    .on_hover_text("Show all entries")
+                    .clicked()
+                {
                     resp.clear_clicked = true;
                 }
-                if ui.small_button("Today").on_hover_text("Filter by today").clicked() {
+                if ui
+                    .small_button("Today")
+                    .on_hover_text("Filter by today")
+                    .clicked()
+                {
                     *cursor = today;
                     resp.today_clicked = true;
                 }
@@ -165,9 +177,8 @@ impl<'a> MonthGrid<'a> {
 
                     if show_week_column {
                         let iso = week_monday.iso_week();
-                        let in_sel = (0..7).any(|i| {
-                            selection.contains(week_monday + Duration::days(i))
-                        });
+                        let in_sel =
+                            (0..7).any(|i| selection.contains(week_monday + Duration::days(i)));
                         let txt = egui::RichText::new(format!("{:02}", iso.week())).weak();
                         let btn = egui::Button::new(txt)
                             .frame(false)
@@ -206,10 +217,8 @@ impl<'a> MonthGrid<'a> {
                             let count = badge(date);
                             if count > 0 {
                                 let painter = ui.painter_at(r.rect);
-                                let center = egui::pos2(
-                                    r.rect.right() - 4.0,
-                                    r.rect.bottom() - 4.0,
-                                );
+                                let center =
+                                    egui::pos2(r.rect.right() - 4.0, r.rect.bottom() - 4.0);
                                 let color = if selected {
                                     ui.visuals().selection.stroke.color
                                 } else {
@@ -256,7 +265,11 @@ fn add_months(d: NaiveDate, n: i32) -> NaiveDate {
 }
 
 fn last_day_of_month(year: i32, month: u32) -> u32 {
-    let (ny, nm) = if month == 12 { (year + 1, 1u32) } else { (year, month + 1) };
+    let (ny, nm) = if month == 12 {
+        (year + 1, 1u32)
+    } else {
+        (year, month + 1)
+    };
     let first_next = NaiveDate::from_ymd_opt(ny, nm, 1).unwrap();
     (first_next - Duration::days(1)).day()
 }
@@ -288,9 +301,7 @@ pub fn format_period_range(start: NaiveDate, end: NaiveDate) -> String {
 /// Reverse of [`format_period_range`] — derive the highlight range from
 /// a `Period` parsed from the home state. Returns `None` when the period
 /// is `Period::None` or empty.
-pub fn selection_from_period(
-    period: &sapphire_journal_core::period::Period,
-) -> Selection {
+pub fn selection_from_period(period: &sapphire_journal_core::period::Period) -> Selection {
     use sapphire_journal_core::period::Period;
     match period {
         Period::None => Selection::None,

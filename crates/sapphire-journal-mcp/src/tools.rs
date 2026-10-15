@@ -18,8 +18,7 @@ use sapphire_framework::mcp::{self, McpService, ToolContext};
 use serde::Serialize;
 
 use sapphire_journal_api::{
-    self as api,
-    EmptyParams, EntryCheckParams, EntryFixParams, EntryListParams, EntryModifyParams,
+    self as api, EmptyParams, EntryCheckParams, EntryFixParams, EntryListParams, EntryModifyParams,
     EntryNewParams, EntryRemoveParams, EntryShowParams, EntryTreeParams,
 };
 
@@ -137,9 +136,11 @@ impl JournalTools {
         self.call(api::ENTRY_CHECK, p).await
     }
 
-    #[tool(description = "Normalize an entry: sync closed_at, update updated_at, and rename the file \
+    #[tool(
+        description = "Normalize an entry: sync closed_at, update updated_at, and rename the file \
         to match its frontmatter ID and title/slug. \
-        Reports the rename or confirms the filename is already correct.")]
+        Reports the rename or confirms the filename is already correct."
+    )]
     pub async fn entry_fix(
         &self,
         Parameters(p): Parameters<EntryFixParams>,
@@ -166,9 +167,11 @@ impl JournalTools {
         self.call(api::CACHE_INFO, p).await
     }
 
-    #[tool(description = "Incrementally sync the entry cache with the current journal state. \
+    #[tool(
+        description = "Incrementally sync the entry cache with the current journal state. \
         Re-indexes files whose mtime has changed and removes entries for deleted files. \
-        Returns the number of entries in the cache after sync.")]
+        Returns the number of entries in the cache after sync."
+    )]
     pub async fn cache_sync(
         &self,
         Parameters(p): Parameters<EmptyParams>,
