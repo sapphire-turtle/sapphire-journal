@@ -10,13 +10,14 @@ fn parse(args: &[&str]) -> Cli {
 }
 
 #[test]
-fn a_bare_invocation_is_the_server() {
-    // `None` is what `main` runs as `serve`; the service manager starts the
-    // binary with `serve`, which must land in the same place.
-    assert!(parse(&[]).command.is_none());
+fn a_bare_invocation_prints_the_help() {
+    // The framework's recommendation: nothing starts on a bare invocation;
+    // the service manager starts the binary with `serve`.
+    let err = Cli::try_parse_from(["sapphire-journal"]).err().expect("a bare invocation does not parse");
+    assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand);
     assert!(matches!(
         parse(&["serve"]).command,
-        Some(Command::Framework(FrameworkCommand::Serve))
+        Command::Framework(FrameworkCommand::Serve)
     ));
 }
 
@@ -34,7 +35,7 @@ fn the_framework_verbs_sit_at_the_top_level() {
         &["mcp"],
     ] {
         assert!(
-            matches!(parse(args).command, Some(Command::Framework(_))),
+            matches!(parse(args).command, Command::Framework(_)),
             "{args:?} should be a framework verb"
         );
     }
@@ -44,10 +45,10 @@ fn the_framework_verbs_sit_at_the_top_level() {
 fn the_journal_verbs_still_parse_beside_them() {
     assert!(matches!(
         parse(&["entry", "list", "today"]).command,
-        Some(Command::Entry { .. })
+        Command::Entry { .. }
     ));
-    assert!(matches!(parse(&["cache", "info"]).command, Some(Command::Cache { .. })));
-    assert!(matches!(parse(&["config", "show"]).command, Some(Command::Config { .. })));
+    assert!(matches!(parse(&["cache", "info"]).command, Command::Cache { .. }));
+    assert!(matches!(parse(&["config", "show"]).command, Command::Config { .. }));
 }
 
 #[test]
@@ -59,7 +60,7 @@ fn the_journal_follows_the_server_not_a_directory() {
     }
     assert!(matches!(
         parse(&["workspace", "init", "/tmp/j"]).command,
-        Some(Command::Framework(_))
+        Command::Framework(_)
     ));
 }
 
