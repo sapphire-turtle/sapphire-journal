@@ -1,22 +1,17 @@
 use std::path::Path;
 
-use crate::{
-    entry::{Entry, Frontmatter},
-    error::{Error, Result},
-};
-
-const FENCE: &str = "---";
+use crate::{entry::Entry, error::Result};
 
 /// Parse a Markdown file into an [`Entry`].
 ///
-/// Frontmatter is optional. If the file starts with `---`, everything until
-/// the closing `---` is parsed as YAML. The rest is the body.
+/// The file must start with a `---` line; everything until the closing `---`
+/// is parsed as YAML. The rest, without its leading blank lines, is the body.
 pub fn parse_entry(path: &Path, source: &str) -> Result<Entry> {
-    let (frontmatter, body) = split_frontmatter(path, source)?;
+    let (frontmatter, body) = sapphire_frontmatter::parse(source)?;
     Ok(Entry {
         path: path.to_path_buf(),
         frontmatter,
-        body: body.to_owned(),
+        body: body.trim_start_matches(['\n', '\r']).to_owned(),
     })
 }
 
@@ -26,58 +21,10 @@ pub fn read_entry(path: &Path) -> Result<Entry> {
     parse_entry(path, &source)
 }
 
-fn split_frontmatter<'a>(_path: &Path, source: &'a str) -> Result<(Frontmatter, &'a str)> {
-    let Some(rest) = source.strip_prefix(FENCE) else {
-        return Err(Error::InvalidEntry("missing frontmatter block".into()));
-    };
-
-    // The opening `---` must be followed by a newline (LF or CRLF).
-    let Some(rest) = rest
-        .strip_prefix('\n')
-        .or_else(|| rest.strip_prefix("\r\n"))
-    else {
-        return Err(Error::InvalidEntry("missing frontmatter block".into()));
-    };
-
-    // The closing fence is a line holding only `---`, with either line ending.
-    let mut offset = 0;
-    let mut fence = None;
-    for line in rest.split_inclusive('\n') {
-        if line.trim_end_matches(['\n', '\r']) == FENCE {
-            fence = Some((offset, line.len()));
-            break;
-        }
-        offset += line.len();
-    }
-    let Some((end, fence_len)) = fence else {
-        return Err(Error::InvalidEntry(
-            "frontmatter block is not closed".into(),
-        ));
-    };
-
-    let yaml = &rest[..end];
-    let body = &rest[end + fence_len..];
-    let body = body.trim_start_matches(['\n', '\r']);
-
-    let frontmatter: Frontmatter = sapphire_frontmatter::from_yaml(yaml)?;
-    Ok((frontmatter, body))
-}
-
 /// Serialize an [`Entry`] back to Markdown source.
 pub fn render_entry(entry: &Entry) -> String {
-    let mut out = String::new();
-
-    let yaml =
-        sapphire_frontmatter::to_yaml(&entry.frontmatter).expect("frontmatter serialization failed");
-    out.push_str("---\n");
-    out.push_str(&yaml);
-    out.push_str("---\n");
-    if !entry.body.is_empty() {
-        out.push('\n');
-    }
-
-    out.push_str(&entry.body);
-    out
+    sapphire_frontmatter::render(&entry.frontmatter, &entry.body)
+        .expect("frontmatter serialization failed")
 }
 
 /// Write an [`Entry`] back to its source file, updating `updated_at` first.

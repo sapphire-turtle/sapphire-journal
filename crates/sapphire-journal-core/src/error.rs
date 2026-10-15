@@ -5,11 +5,8 @@ pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Failed to parse frontmatter: {0}")]
+    #[error(transparent)]
     FrontmatterParse(#[from] sapphire_frontmatter::Error),
-
-    #[error("Invalid entry file: {0}")]
-    InvalidEntry(String),
 
     #[error("not a sapphire-journal: no .sapphire-journal directory there")]
     JournalNotFound,
