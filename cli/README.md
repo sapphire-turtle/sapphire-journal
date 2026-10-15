@@ -1,22 +1,26 @@
 # sapphire-journal
 
-Unified binary for [sapphire-journal](https://github.com/fluo10/sapphire-journal) — a Markdown-based task and note manager.
+Unified binary for [sapphire-journal](https://github.com/sapphire-turtle/sapphire-journal) — a Markdown-based task and note manager.
 One binary is the CLI for humans, the app server that serves, indexes and syncs a journal,
 and the MCP server for AI agents.
 
 ## Installation
 
-### Install script (Linux / macOS)
+### Install script
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fluo10/sapphire-journal/main/install.sh | sh
+# Linux, macOS
+curl -fsSL https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/main/install/install.sh | sh -s -- journal
 ```
-
-### Install script (Windows)
 
 ```powershell
-irm https://raw.githubusercontent.com/fluo10/sapphire-journal/main/install.ps1 | iex
+# Windows
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/main/install/install.ps1))) journal
 ```
+
+This installs `sapphire-journal` together with `sapphire-bridge`, which it syncs
+through, into `~/.local/bin`. See the [install script's README](https://github.com/sapphire-turtle/sapphire-framework/tree/main/install) for the
+options.
 
 ### From crates.io
 
