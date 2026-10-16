@@ -219,7 +219,7 @@ fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
     // Entry list
     if let Some(msg) = &home.entries_error {
         ui.colored_label(egui::Color32::LIGHT_RED, msg);
-        ui.weak("Pick or create a journal in the Sync tab, and make sure the sapphire-journal server is running.");
+        ui.weak("Pick or create a journal in Settings → Workspace, and make sure the sapphire-journal server is running.");
     }
 
     let filtered = filter_and_sort(home);
@@ -1070,7 +1070,7 @@ fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
 // ── Journal menu ────────────────────────────────────────────────────────────
 
 /// Top-left journal menu: refresh and settings. Which journal is served is
-/// chosen in the Sync tab.
+/// chosen in Settings → Workspace.
 fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
     let name = app
         .home
