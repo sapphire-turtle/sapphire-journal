@@ -15,9 +15,9 @@ publish = false
 sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.13.0" }
 sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "2.0.0" }
 sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.2.0" }
-sapphire-framework = { workspace = true, features = ["gui", "ipc"] }
-eframe = "0.36"
-egui = "0.36"
+# `eframe`: `gui::app::run` starts the window, and `gui::{eframe, egui}` are the
+# versions it renders with.
+sapphire-framework = { workspace = true, features = ["eframe", "ipc"] }
 egui_extras = { version = "0.36", features = ["svg"] }
 grain-id = { version = "0.15" }
 serde = { workspace = true }
@@ -25,4 +25,3 @@ toml = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
 chrono = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }

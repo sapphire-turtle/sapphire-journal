@@ -5,7 +5,7 @@
 //! the formatted date string.
 
 use chrono::NaiveDate;
-use eframe::egui;
+use sapphire_framework::gui::egui;
 
 use crate::icons;
 
