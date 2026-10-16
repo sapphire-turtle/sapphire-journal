@@ -14,7 +14,7 @@ use sapphire_journal_core::{
     period::{Period, parse_period},
 };
 
-use crate::app::{App, EditorState, HomeState, Tab, ViewMode};
+use crate::app::{App, EditorState, HomeState, ViewMode};
 use crate::icons;
 use crate::widgets::date_picker::date_picker_button;
 use crate::widgets::month_grid::{
@@ -126,12 +126,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if app.home.confirm_delete_entry {
         let ctx = ui.ctx().clone();
         draw_confirm_delete_entry(app, &ctx);
-    }
-
-    // Settings panel (opened from the journal-switcher menu)
-    if app.settings_panel.is_some() {
-        let ctx = ui.ctx().clone();
-        crate::screens::settings_panel::show(app, &ctx);
     }
 }
 
@@ -1118,11 +1112,9 @@ fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
             home.error_msg = None;
             home.api.refresh();
         }
-    } else if open_settings {
-        app.settings_panel = Some(crate::screens::settings_panel::SettingsPanelState::open());
-        app.api.settings();
-    } else if choose_journal {
-        app.tab = Tab::Sync;
+    } else if open_settings || choose_journal {
+        // Settings holds both the journal's page and the workspace picker.
+        app.open_settings = true;
     }
 }
 

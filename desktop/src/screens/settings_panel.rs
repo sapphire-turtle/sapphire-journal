@@ -1,20 +1,22 @@
-//! Settings panel — the journal's `.sapphire-journal/config.toml` and the
-//! host's `sapphire-journal/config.toml`, read and written by the server
+//! The journal's page in the framework's Settings: the journal's
+//! `.sapphire-journal/config.toml` and the host's
+//! `sapphire-journal/config.toml`, read and written by the server
 //! (`config_get` / `config_set`).
-//!
-//! Opened from the journal menu in `journal_home`.
 
-use sapphire_framework::gui::egui;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use sapphire_framework::gui::{SettingsSection, egui};
 
 use sapphire_journal_api::{ConfigSetParams, JournalSettings};
 use sapphire_journal_core::journal::DuplicateTitlePolicy;
 use sapphire_journal_core::ops::UpdateOption;
 
-use crate::app::App;
+use crate::api::Api;
 
 const DUP_TITLE_OPTIONS: &[&str] = &["allow", "warn", "error"];
 
-/// The panel's form; empty until the server's settings arrive.
+/// The page's form; empty until the server's settings arrive.
 pub struct SettingsPanelState {
     /// The settings as the server last reported them.
     current: Option<JournalSettings>,
@@ -33,7 +35,8 @@ pub struct SettingsPanelState {
 }
 
 impl SettingsPanelState {
-    /// An empty panel; the caller asks the server for the settings.
+    /// An empty form; the page asks the server for the settings when it is
+    /// first shown.
     pub fn open() -> Self {
         Self {
             current: None,
@@ -46,8 +49,34 @@ impl SettingsPanelState {
         }
     }
 
+    /// What the server reported, as it comes every few seconds: the form
+    /// follows it (another journal selected, a change from the CLI) unless
+    /// it holds an edit not saved yet.
+    pub fn refreshed(&mut self, settings: JournalSettings) {
+        if !self.edited() {
+            self.loaded(settings);
+        }
+    }
+
+    /// Whether the form differs from the settings it was filled from.
+    fn edited(&self) -> bool {
+        self.current.as_ref().is_some_and(|current| {
+            let mut fresh = Self::open();
+            fresh.loaded(current.clone());
+            (
+                &self.duplicate_title,
+                &self.entries_dir,
+                &self.sync_interval_minutes,
+            ) != (
+                &fresh.duplicate_title,
+                &fresh.entries_dir,
+                &fresh.sync_interval_minutes,
+            )
+        })
+    }
+
     /// Fill the form from what the server reported.
-    pub fn loaded(&mut self, settings: JournalSettings) {
+    fn loaded(&mut self, settings: JournalSettings) {
         self.duplicate_title = policy_name(settings.duplicate_title).to_string();
         self.entries_dir = settings.entries_dir.clone().unwrap_or_default();
         self.sync_interval_minutes = settings
@@ -114,116 +143,113 @@ fn policy_name(policy: DuplicateTitlePolicy) -> &'static str {
     }
 }
 
-/// Render the panel.  No-op when `app.settings_panel` is `None`.
-pub fn show(app: &mut App, ctx: &egui::Context) {
-    let Some(mut state) = app.settings_panel.take() else {
-        return;
-    };
-    let mut close = false;
-    let mut do_save = false;
-    let mut open_flag = true;
+/// The journal's page in Settings. The form is shared with the app, which
+/// hands it the server's answers.
+pub struct JournalSettingsPage {
+    state: Rc<RefCell<SettingsPanelState>>,
+    api: Api,
+    /// The settings have been asked for once.
+    requested: bool,
+}
 
-    egui::Window::new("Settings")
-        .collapsible(false)
-        .resizable(true)
-        .default_width(480.0)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .open(&mut open_flag)
-        .show(ctx, |ui| {
-            if state.current.is_none() {
-                if let Some(msg) = state.error_msg.clone() {
-                    ui.colored_label(egui::Color32::LIGHT_RED, msg);
-                } else {
-                    ui.spinner();
-                }
-                return;
-            }
-
-            ui.heading("This journal");
-            ui.add_space(4.0);
-
-            ui.label("Duplicate title policy");
-            egui::ComboBox::from_id_salt("settings_dup_title")
-                .selected_text(&state.duplicate_title)
-                .width(ui.available_width())
-                .show_ui(ui, |ui| {
-                    for v in DUP_TITLE_OPTIONS {
-                        ui.selectable_value(&mut state.duplicate_title, (*v).to_string(), *v);
-                    }
-                });
-            ui.add_space(6.0);
-
-            ui.label("Entries directory (relative to journal root; blank = root)");
-            ui.add(
-                egui::TextEdit::singleline(&mut state.entries_dir)
-                    .hint_text("entries")
-                    .desired_width(f32::INFINITY),
-            );
-
-            ui.add_space(10.0);
-            ui.separator();
-            ui.add_space(6.0);
-
-            ui.heading("This computer");
-            ui.weak("Takes effect when the sapphire-journal server next starts.");
-            ui.add_space(4.0);
-
-            ui.label("Re-scan interval (minutes; 0 to disable)");
-            ui.add(
-                egui::TextEdit::singleline(&mut state.sync_interval_minutes).desired_width(80.0),
-            );
-
-            ui.add_space(10.0);
-            ui.separator();
-            ui.add_space(6.0);
-
-            ui.heading("MCP");
-            ui.weak(
-                "AI agents reach the journal through the sapphire-journal server: \
-                 `sapphire-journal mcp` on stdio, or http://127.0.0.1:3172/mcp once \
-                 `[mcp] http = true` is set in the server's server.toml.",
-            );
-
-            if let Some(msg) = state.error_msg.clone() {
-                ui.add_space(8.0);
-                ui.colored_label(egui::Color32::LIGHT_RED, msg);
-            }
-            if let Some(msg) = state.info_msg.clone() {
-                ui.add_space(8.0);
-                ui.colored_label(egui::Color32::LIGHT_GREEN, msg);
-            }
-
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add_enabled(!state.saving, egui::Button::new("Save"))
-                        .clicked()
-                    {
-                        do_save = true;
-                    }
-                    if ui.button("Close").clicked() {
-                        close = true;
-                    }
-                });
-            });
-        });
-
-    if !open_flag {
-        close = true;
-    }
-    if do_save {
-        state.error_msg = None;
-        state.info_msg = None;
-        match state.params() {
-            Ok(params) => {
-                state.saving = true;
-                app.api.set_settings(params);
-            }
-            Err(e) => state.error_msg = Some(e),
+impl JournalSettingsPage {
+    pub fn new(state: Rc<RefCell<SettingsPanelState>>, api: Api) -> Self {
+        Self {
+            state,
+            api,
+            requested: false,
         }
     }
-    if !close {
-        app.settings_panel = Some(state);
+}
+
+impl SettingsSection for JournalSettingsPage {
+    fn label(&self) -> String {
+        "Journal".to_string()
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        if !std::mem::replace(&mut self.requested, true) {
+            self.api.settings();
+        }
+        let mut state = self.state.borrow_mut();
+        if state.current.is_none() {
+            if let Some(msg) = state.error_msg.clone() {
+                ui.colored_label(egui::Color32::LIGHT_RED, msg);
+                if ui.button("Retry").clicked() {
+                    state.error_msg = None;
+                    self.api.settings();
+                }
+            } else {
+                ui.spinner();
+            }
+            return;
+        }
+
+        ui.heading("This journal");
+        ui.add_space(4.0);
+
+        ui.label("Duplicate title policy");
+        egui::ComboBox::from_id_salt("settings_dup_title")
+            .selected_text(&state.duplicate_title)
+            .show_ui(ui, |ui| {
+                for v in DUP_TITLE_OPTIONS {
+                    ui.selectable_value(&mut state.duplicate_title, (*v).to_string(), *v);
+                }
+            });
+        ui.add_space(6.0);
+
+        ui.label("Entries directory (relative to journal root; blank = root)");
+        ui.add(
+            egui::TextEdit::singleline(&mut state.entries_dir)
+                .hint_text("entries")
+                .desired_width(320.0),
+        );
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(6.0);
+
+        ui.heading("This computer");
+        ui.weak("Takes effect when the sapphire-journal server next starts.");
+        ui.add_space(4.0);
+
+        ui.label("Re-scan interval (minutes; 0 to disable)");
+        ui.add(egui::TextEdit::singleline(&mut state.sync_interval_minutes).desired_width(80.0));
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(6.0);
+
+        ui.heading("MCP");
+        ui.weak(
+            "AI agents reach the journal through the sapphire-journal server: \
+             `sapphire-journal mcp` on stdio, or http://127.0.0.1:3172/mcp once \
+             `[mcp] http = true` is set in the server's server.toml.",
+        );
+
+        if let Some(msg) = state.error_msg.clone() {
+            ui.add_space(8.0);
+            ui.colored_label(egui::Color32::LIGHT_RED, msg);
+        }
+        if let Some(msg) = state.info_msg.clone() {
+            ui.add_space(8.0);
+            ui.colored_label(egui::Color32::LIGHT_GREEN, msg);
+        }
+
+        ui.add_space(8.0);
+        if ui
+            .add_enabled(!state.saving && state.edited(), egui::Button::new("Save"))
+            .clicked()
+        {
+            state.error_msg = None;
+            state.info_msg = None;
+            match state.params() {
+                Ok(params) => {
+                    state.saving = true;
+                    self.api.set_settings(params);
+                }
+                Err(e) => state.error_msg = Some(e),
+            }
+        }
     }
 }

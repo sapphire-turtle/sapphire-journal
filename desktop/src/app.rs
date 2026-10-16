@@ -1,40 +1,110 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use chrono::NaiveDate;
 use grain_id::GrainId;
-use sapphire_framework::gui::Settings as FrameworkSettings;
-use sapphire_framework::gui::{eframe, egui};
+use sapphire_framework::gui::client::FrameworkClient;
+use sapphire_framework::gui::{Destination, Settings as FrameworkSettings, Shell, eframe, egui};
 use sapphire_journal_core::entry::{Entry, EntryHeader};
 
 use crate::api::{Api, Reply};
+use crate::icons;
 use crate::screens;
-use crate::screens::settings_panel::SettingsPanelState;
+use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
 use crate::settings::{RightTab, Settings};
 
 /// How often the journal tab re-reads the entry list on its own, to pick up
 /// what the CLI, an agent or sync wrote.
 pub const REFRESH_EVERY: Duration = Duration::from_secs(10);
 
+/// The app's own screens, on the framework's rail.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Tab {
+pub enum Screen {
     Journal,
-    Sync,
 }
 
-/// The desktop app: a client of the `sapphire-journal` server and the
-/// host's bridge. The Journal tab shows the journal the server serves; the
-/// Sync tab (the framework's panel) chooses that journal and manages sync.
+/// The window: the framework's [`Shell`] around the journal. The rail opens
+/// the Journal screen, and Settings at its foot, which chooses the journal,
+/// manages sync and holds the journal's own settings page.
+pub struct Window {
+    shell: Shell<Screen>,
+    app: App,
+}
+
+impl Window {
+    pub fn new(
+        api: Api,
+        replies: mpsc::Receiver<Reply>,
+        framework: FrameworkClient,
+        data_dir: PathBuf,
+    ) -> Self {
+        let journal_settings = Rc::new(RefCell::new(SettingsPanelState::open()));
+        let settings = FrameworkSettings::new(framework).with_app_sections(
+            "Journal",
+            vec![Box::new(JournalSettingsPage::new(
+                Rc::clone(&journal_settings),
+                api.clone(),
+            ))],
+        );
+        let shell = Shell::new(
+            vec![Destination::new(
+                Screen::Journal,
+                icons::book_open(),
+                "Journal",
+            )],
+            settings,
+        );
+        Self {
+            shell,
+            app: App::new(api, replies, journal_settings, data_dir),
+        }
+    }
+}
+
+impl eframe::App for Window {
+    fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.app.handle_replies();
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Re-read the list on its own now and then, and wake up for it even
+        // if nothing else happens.
+        if self.shell.current() == Some(Screen::Journal)
+            && self
+                .app
+                .home
+                .last_listed
+                .is_none_or(|t| t.elapsed() >= REFRESH_EVERY)
+        {
+            // A switch in Settings may have changed the journal.
+            self.app.api.settings();
+            self.app.home.reload();
+        }
+        ui.ctx().request_repaint_after(REFRESH_EVERY);
+
+        let app = &mut self.app;
+        self.shell.ui(ui, |ui, screen| match screen {
+            Screen::Journal => screens::journal_home::show(app, ui),
+        });
+        if std::mem::take(&mut self.app.open_settings) {
+            self.shell.open_settings();
+        }
+    }
+}
+
+/// The journal: a client of the `sapphire-journal` server, so it shows the
+/// journal the server serves.
 pub struct App {
-    pub tab: Tab,
     pub settings: Settings,
     pub home: HomeState,
-    /// When `Some`, the Settings window is shown on top of the journal tab.
-    pub settings_panel: Option<SettingsPanelState>,
-    /// The framework's Settings: the workspace, sync, the workgroup, About.
-    pub sync: FrameworkSettings,
+    /// The journal's page in Settings, filled from the server's answers.
+    pub journal_settings: Rc<RefCell<SettingsPanelState>>,
+    /// Set to have the window open Settings (from the journal menu).
+    pub open_settings: bool,
     pub api: Api,
     replies: mpsc::Receiver<Reply>,
 }
@@ -199,7 +269,7 @@ impl App {
     pub fn new(
         api: Api,
         replies: mpsc::Receiver<Reply>,
-        sync: FrameworkSettings,
+        journal_settings: Rc<RefCell<SettingsPanelState>>,
         data_dir: PathBuf,
     ) -> Self {
         let settings = Settings::load(&data_dir);
@@ -207,11 +277,10 @@ impl App {
         home.reload();
         api.settings();
         Self {
-            tab: Tab::Journal,
             settings,
             home,
-            settings_panel: None,
-            sync,
+            journal_settings,
+            open_settings: false,
             api,
             replies,
         }
@@ -292,56 +361,13 @@ impl App {
                 Reply::Settings(result) => match result {
                     Ok(settings) => {
                         home.journal_root = Some(settings.root.clone());
-                        if let Some(panel) = self.settings_panel.as_mut() {
-                            panel.loaded(settings);
-                        }
+                        self.journal_settings.borrow_mut().refreshed(settings);
                     }
-                    Err(e) => {
-                        if let Some(panel) = self.settings_panel.as_mut() {
-                            panel.error_msg = Some(e);
-                        }
-                    }
+                    Err(e) => self.journal_settings.borrow_mut().error_msg = Some(e),
                 },
                 Reply::SettingsSaved(result) => {
-                    if let Some(panel) = self.settings_panel.as_mut() {
-                        panel.saved(result);
-                    }
+                    self.journal_settings.borrow_mut().saved(result);
                 }
-            }
-        }
-    }
-}
-
-impl eframe::App for App {
-    fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.handle_replies();
-    }
-
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // Re-read the list on its own now and then, and wake up for it even
-        // if nothing else happens.
-        if self.tab == Tab::Journal
-            && self
-                .home
-                .last_listed
-                .is_none_or(|t| t.elapsed() >= REFRESH_EVERY)
-        {
-            // A switch in the Sync tab may have changed the journal.
-            self.api.settings();
-            self.home.reload();
-        }
-        ui.ctx().request_repaint_after(REFRESH_EVERY);
-
-        egui::Panel::top("tabs").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.tab, Tab::Journal, "Journal");
-                ui.selectable_value(&mut self.tab, Tab::Sync, "Sync");
-            });
-        });
-        match self.tab {
-            Tab::Journal => screens::journal_home::show(self, ui),
-            Tab::Sync => {
-                egui::CentralPanel::default().show(ui, |ui| self.sync.ui(ui));
             }
         }
     }
