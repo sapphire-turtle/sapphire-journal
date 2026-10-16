@@ -12,47 +12,61 @@ use crate::error::Result;
 /// On-disk user preferences for the GUI.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
-    /// Right metadata sidebar (Obsidian-style) preferences.
+    /// How the journal screen lays out the entries.
     #[serde(default)]
-    pub right_sidebar: RightSidebarSettings,
+    pub view: MainView,
+    /// Where an opened entry is shown.
+    #[serde(default)]
+    pub pane: PaneSettings,
     /// Where [`save`](Self::save) writes: the file [`load`](Self::load) read.
     #[serde(skip)]
     path: PathBuf,
 }
 
-/// Persisted state of the right metadata sidebar.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightSidebarSettings {
-    #[serde(default)]
-    pub visible: bool,
-    #[serde(default = "default_right_sidebar_width")]
-    pub width: f32,
-    #[serde(default)]
-    pub active_tab: RightTab,
+/// The journal screen's view of the entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MainView {
+    /// The entries as a tree or a flat list.
+    #[default]
+    List,
+    /// Tasks in one column per status.
+    Kanban,
 }
 
-impl Default for RightSidebarSettings {
+/// Persisted state of the entry pane.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaneSettings {
+    #[serde(default)]
+    pub placement: PanePlacement,
+    /// Width of the pane docked at the right.
+    #[serde(default = "default_pane_width")]
+    pub width: f32,
+}
+
+impl Default for PaneSettings {
     fn default() -> Self {
         Self {
-            visible: false,
-            width: default_right_sidebar_width(),
-            active_tab: RightTab::default(),
+            placement: PanePlacement::default(),
+            width: default_pane_width(),
         }
     }
 }
 
-fn default_right_sidebar_width() -> f32 {
-    280.0
+fn default_pane_width() -> f32 {
+    380.0
 }
 
-/// Which tab is currently selected in the right metadata sidebar.
-///
-/// Only one tab exists today; the enum is laid out so future tabs (outline,
-/// backlinks, etc.) can be added without breaking the on-disk format.
+/// Where the entry pane sits. Which one the app keeps is still open, so
+/// both can be tried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum RightTab {
+#[serde(rename_all = "snake_case")]
+pub enum PanePlacement {
+    /// A narrow column at the right of the view.
     #[default]
-    Metadata,
+    Side,
+    /// A window floating over the view.
+    Floating,
 }
 
 impl Settings {
