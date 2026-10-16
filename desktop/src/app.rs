@@ -11,11 +11,11 @@ use sapphire_framework::gui::client::FrameworkClient;
 use sapphire_framework::gui::{Destination, Settings as FrameworkSettings, Shell, eframe, egui};
 use sapphire_journal_core::entry::{Entry, EntryHeader};
 
-use crate::api::{Api, Reply};
+use crate::api::{Api, Change, Reply};
 use crate::icons;
 use crate::screens;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
-use crate::settings::{RightTab, Settings};
+use crate::settings::{MainView, PanePlacement, Settings};
 
 /// How often the journal tab re-reads the entry list on its own, to pick up
 /// what the CLI, an agent or sync wrote.
@@ -86,6 +86,22 @@ impl eframe::App for Window {
         }
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
+        // Closing the window with unsaved changes asks first.
+        let home = &mut self.app.home;
+        if ui.ctx().input(|i| i.viewport().close_requested())
+            && !home.allow_close
+            && home.is_dirty()
+        {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            home.unsaved = Some(Pending::Quit);
+            self.shell.open(Screen::Journal);
+        }
+        if std::mem::take(&mut home.quit) {
+            home.allow_close = true;
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
         let app = &mut self.app;
         self.shell.ui(ui, |ui, screen| match screen {
             Screen::Journal => screens::journal_home::show(app, ui),
@@ -109,14 +125,15 @@ pub struct App {
     replies: mpsc::Receiver<Reply>,
 }
 
-/// State for the journal tab (sidebar + editor).
+/// State for the journal screen: a view of the entries, and the pane the
+/// open entry is edited in.
 pub struct HomeState {
     pub api: Api,
 
     /// The journal the server serves, once the server has said.
     pub journal_root: Option<PathBuf>,
 
-    /// Headers for the entry sidebar, as the server last listed them.
+    /// Headers for the views, as the server last listed them.
     pub entries: Vec<EntryHeader>,
     /// Why the list could not be read (no server, no journal selected, …).
     pub entries_error: Option<String>,
@@ -124,54 +141,70 @@ pub struct HomeState {
     pub listing: bool,
     pub last_listed: Option<Instant>,
 
-    /// Currently-selected entry, if any.
+    /// The entry open in the pane, if any.
     pub selected_path: Option<PathBuf>,
-    /// The selected entry's form; `None` while it loads.
+    /// The open entry's form; `None` while it loads.
     pub editor: Option<EditorState>,
 
-    /// Hierarchical (tree) or flat (list) display of entries.
-    pub view_mode: ViewMode,
+    /// The list or the kanban.
+    pub view: MainView,
+    /// Hierarchical (tree) or flat display in the list view.
+    pub list_layout: ListLayout,
     /// IDs of tree nodes whose children are currently hidden.  Default open
     /// (a node not in this set is expanded).
     pub collapsed: HashSet<GrainId>,
-    /// Whether the period / sort / order pickers are visible. Toggled by
-    /// the funnel icon in the sidebar toolbar.  Search input stays visible.
+    /// Whether the sort / order pickers are visible. Toggled by the funnel
+    /// icon in the toolbar.  Search input stays visible.
     pub show_filters: bool,
+    /// Docked at the right or floating.
+    pub pane_placement: PanePlacement,
+    /// Width of the docked pane, as last saved.
+    pub pane_width: f32,
 
-    // ── Sidebar filter / sort state ─────────────────────────────────────────
+    // ── Filter / sort state ─────────────────────────────────────────────────
     pub filter_text: String,
-    /// Active period filter, serialised as a [`sapphire_journal_core::period`] string.
-    /// Empty = no filter (all entries). Day click writes `YYYY-MM-DD`, week / month
-    /// clicks write `YYYY-MM-DD/YYYY-MM-DD`, the calendar's "Today" shortcut writes
-    /// `today`.
+    /// Active period filter, a [`sapphire_journal_core::period`] string:
+    /// the period picker writes `YYYY`, `YYYY-MM`, `YYYY-Www`, `YYYY-MM-DD`
+    /// or `today`, and the field takes any alias the CLI does. Empty = no
+    /// filter (all entries).
     pub period: String,
-    /// The month currently displayed in the home-screen calendar widget.  Mutated
-    /// by the calendar's ◀ / ▶ arrows and reset to today by the "Today" shortcut.
+    /// The month the period picker shows.
     pub calendar_cursor: NaiveDate,
-    /// Whether the home-screen calendar is visible (toggled by its caret).
-    pub show_calendar: bool,
     /// Sort field. One of "updated_at" | "created_at" | "title" | "id"
     /// | "task_due" | "event_start".
     pub sort_by: String,
     /// "asc" | "desc".
     pub sort_order: String,
 
-    pub confirm_delete_entry: bool,
+    /// The entry the "delete?" question is asked about, while it is.
+    pub confirm_delete: Option<PathBuf>,
+    /// What waits on the "unsaved changes" question, while it is asked.
+    pub unsaved: Option<Pending>,
+    /// What to do once the save the user chose there has gone through.
+    pub after_save: Option<Pending>,
+    /// Set to have the window close (after the question was answered).
+    pub quit: bool,
+    /// The window may close without asking again.
+    pub allow_close: bool,
     pub error_msg: Option<String>,
     pub info_msg: Option<String>,
 
     /// `true` while a user-triggered refresh is running. Used to
     /// short-circuit duplicate clicks and to render a spinner in the header.
     pub sync_in_progress: bool,
-    /// Whether the Obsidian-style right metadata sidebar is currently shown.
-    /// Toggled by the panel icon in the top header; persisted in [`Settings`].
-    pub show_right_sidebar: bool,
-    /// Active tab within the right sidebar (only `Metadata` exists today,
-    /// but the field is kept so future tabs can be added without UI churn).
-    pub right_sidebar_tab: RightTab,
-    /// User-resized width of the right sidebar in panel mode. Saved back to
-    /// [`Settings`] when the drag ends.
-    pub right_sidebar_width: f32,
+}
+
+/// Something that would throw away the open entry's unsaved changes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pending {
+    /// Open another entry.
+    Open(PathBuf),
+    /// Close the pane.
+    Close,
+    /// Create an entry (under a parent) and open it.
+    New(Option<GrainId>),
+    /// Close the window.
+    Quit,
 }
 
 impl HomeState {
@@ -185,26 +218,29 @@ impl HomeState {
             last_listed: None,
             selected_path: None,
             editor: None,
-            view_mode: ViewMode::Tree,
+            view: settings.view,
+            list_layout: ListLayout::Tree,
             collapsed: HashSet::new(),
             show_filters: false,
+            pane_placement: settings.pane.placement,
+            pane_width: settings.pane.width,
             filter_text: String::new(),
             period: String::new(),
             calendar_cursor: chrono::Local::now().date_naive(),
-            show_calendar: true,
             sort_by: "updated_at".to_string(),
             sort_order: "desc".to_string(),
-            confirm_delete_entry: false,
+            confirm_delete: None,
+            unsaved: None,
+            after_save: None,
+            quit: false,
+            allow_close: false,
             error_msg: None,
             info_msg: None,
             sync_in_progress: false,
-            show_right_sidebar: settings.right_sidebar.visible,
-            right_sidebar_tab: settings.right_sidebar.active_tab,
-            right_sidebar_width: settings.right_sidebar.width,
         }
     }
 
-    /// Look up the cached header for the currently-selected entry.
+    /// Look up the cached header for the open entry.
     pub fn active_header(&self) -> Option<&EntryHeader> {
         let path = self.selected_path.as_ref()?;
         self.entries
@@ -222,9 +258,54 @@ impl HomeState {
         self.api.list();
     }
 
+    /// Whether the open entry's form differs from what was loaded.
+    pub fn is_dirty(&self) -> bool {
+        self.editor.as_ref().is_some_and(EditorState::is_dirty)
+    }
+
+    /// Open `path` in the pane, asking first if that would drop changes.
+    pub fn open(&mut self, path: PathBuf) {
+        if self.selected_path.as_ref() != Some(&path) {
+            self.guard(Pending::Open(path));
+        }
+    }
+
+    /// Close the pane, asking first if that would drop changes.
+    pub fn close_entry(&mut self) {
+        self.guard(Pending::Close);
+    }
+
+    /// Create an entry and open it, asking first if that would drop changes.
+    pub fn new_entry(&mut self, parent: Option<GrainId>) {
+        self.guard(Pending::New(parent));
+    }
+
+    fn guard(&mut self, pending: Pending) {
+        if self.is_dirty() {
+            self.unsaved = Some(pending);
+        } else {
+            self.perform(pending);
+        }
+    }
+
+    /// Do what was asked, the open entry's changes no longer standing in
+    /// the way.
+    pub fn perform(&mut self, pending: Pending) {
+        match pending {
+            Pending::Open(path) => self.select(path),
+            Pending::Close => {
+                self.selected_path = None;
+                self.editor = None;
+                self.info_msg = None;
+            }
+            Pending::New(parent) => self.api.prepare(parent),
+            Pending::Quit => self.quit = true,
+        }
+    }
+
     /// Select `path` and ask the server for it; the editor shows it when it
-    /// arrives.
-    pub fn select(&mut self, path: PathBuf) {
+    /// arrives. Drops the open entry's form as it is.
+    fn select(&mut self, path: PathBuf) {
         self.selected_path = Some(path.clone());
         self.editor = None;
         self.info_msg = None;
@@ -232,19 +313,19 @@ impl HomeState {
     }
 }
 
-/// How the entry sidebar should display entries.
+/// How the list view lays out entries.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ViewMode {
+pub enum ListLayout {
     /// Hierarchical view following `parent_id` relationships.
     Tree,
     /// Flat list, ignoring hierarchy.
-    List,
+    Flat,
 }
 
 /// Form fields for the entry currently being edited in the main panel.
 ///
 /// The path of the entry being edited lives in `HomeState::selected_path` so
-/// that selection-aware UI (e.g. the sidebar's active-row highlight) and the
+/// that selection-aware UI (e.g. the views' active-row highlight) and the
 /// editor stay in sync.
 pub struct EditorState {
     /// The entry as the server last returned it: saving writes the form's
@@ -308,7 +389,7 @@ impl App {
                         continue;
                     }
                     match result {
-                        Ok(entry) => home.editor = Some(screens::journal_home::editor_for(*entry)),
+                        Ok(entry) => home.editor = Some(screens::entry_pane::editor_for(*entry)),
                         Err(e) => home.error_msg = Some(e),
                     }
                 }
@@ -322,34 +403,64 @@ impl App {
                 Reply::Saved(old_path, result) => match result {
                     Ok(path) => {
                         if home.selected_path.as_ref() == Some(&old_path) {
-                            home.select(path);
-                            home.info_msg = Some("Saved.".to_string());
+                            match home.after_save.take() {
+                                // Saved on the way to something else.
+                                Some(pending) => home.perform(pending),
+                                None => {
+                                    home.select(path);
+                                    home.info_msg = Some("Saved.".to_string());
+                                }
+                            }
                         }
                         home.reload();
                     }
-                    Err(e) => home.error_msg = Some(format!("Save failed: {e}")),
+                    Err(e) => {
+                        home.after_save = None;
+                        home.error_msg = Some(format!("Save failed: {e}"));
+                    }
                 },
                 Reply::Removed(path, result) => match result {
                     Ok(()) => {
                         if home.selected_path.as_ref() == Some(&path) {
-                            home.selected_path = None;
-                            home.editor = None;
-                            home.info_msg = None;
+                            home.perform(Pending::Close);
                         }
                         home.reload();
                     }
                     Err(e) => home.error_msg = Some(e),
                 },
-                Reply::Reparented(old_path, result) => match result {
+                Reply::Modified(old_path, change, result) => match result {
                     Ok(path) => {
-                        // Track selection if it moved with a rename.
                         if home.selected_path.as_ref() == Some(&old_path) {
-                            home.selected_path = Some(path);
+                            match &change {
+                                Change::Parent => {
+                                    // Track selection if it moved with a rename.
+                                    home.selected_path = Some(path);
+                                    home.info_msg = Some("Reparented.".to_string());
+                                }
+                                // Keep what is being typed, and save the new
+                                // status with it; otherwise show the entry
+                                // as the server left it.
+                                Change::TaskStatus(status) => match &mut home.editor {
+                                    Some(editor) if editor.is_dirty() => {
+                                        editor.task_status = status.clone();
+                                        if let Some(task) = &mut editor.base.frontmatter.task {
+                                            task.status = status.clone();
+                                        }
+                                        home.selected_path = Some(path);
+                                    }
+                                    _ => home.select(path),
+                                },
+                            }
                         }
-                        home.info_msg = Some("Reparented.".to_string());
                         home.reload();
                     }
-                    Err(e) => home.error_msg = Some(format!("Reparent failed: {e}")),
+                    Err(e) => {
+                        let what = match change {
+                            Change::Parent => "Reparent",
+                            Change::TaskStatus(_) => "Status change",
+                        };
+                        home.error_msg = Some(format!("{what} failed: {e}"));
+                    }
                 },
                 Reply::Refreshed(result) => {
                     home.sync_in_progress = false;

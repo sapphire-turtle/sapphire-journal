@@ -1,12 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
-use chrono::{Duration, NaiveDate};
+use chrono::NaiveDate;
 use grain_id::GrainId;
 use sapphire_framework::gui::egui;
 
 use sapphire_journal_core::{
-    entry::{Entry, EntryHeader},
+    entry::EntryHeader,
     ops::{
         EntryFilter, EntryTreeNode, FieldSelector, SortField as CoreSortField,
         SortOrder as CoreSortOrder, build_entry_tree,
@@ -14,215 +14,227 @@ use sapphire_journal_core::{
     period::{Period, parse_period},
 };
 
-use crate::app::{App, EditorState, HomeState, ViewMode};
+use crate::app::{App, HomeState, ListLayout, Pending};
 use crate::icons;
-use crate::widgets::date_picker::date_picker_button;
-use crate::widgets::month_grid::{
-    self, MonthGrid, Selection, format_period_range, month_bounds, week_bounds,
-};
+use crate::screens::entry_pane::{self, PaneAction};
+use crate::screens::kanban;
+use crate::settings::{MainView, PanePlacement};
+use crate::widgets::buttons::{icon_btn, icon_text_btn, icon_toggle_btn};
+use crate::widgets::period_picker::period_picker;
 
-/// The journal tab: everything it shows comes from the running server's
+/// The journal screen: a view of the entries, and the pane the open one is
+/// edited in. Everything it shows comes from the running server's
 /// `sapphire-journal.*` methods, so it is the journal the server serves.
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
-    // ── Layout: top header + left sidebar + central editor ───────────────
-    let mut toggle_right_sidebar = false;
-    egui::Panel::top("home_header")
-        .resizable(false)
-        .show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                draw_journal_menu(app, ui);
-                {
-                    let home = &app.home;
-                    if home.sync_in_progress {
-                        ui.add(egui::Spinner::new().size(14.0));
-                        ui.small("Refreshing…");
-                        // While a refresh is running, keep painting so the
-                        // spinner animates even without user input.
-                        ui.ctx()
-                            .request_repaint_after(std::time::Duration::from_millis(100));
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let active = home.show_right_sidebar;
-                        let tooltip = if active {
-                            "Hide right sidebar"
-                        } else {
-                            "Show right sidebar"
-                        };
-                        if icon_toggle_btn(ui, icons::panel_right(), active, tooltip).clicked() {
-                            toggle_right_sidebar = true;
-                        }
-                        if let Some(root) = &home.journal_root {
-                            ui.small(root.display().to_string());
-                        }
-                    });
-                }
-            });
-            ui.add_space(4.0);
-        });
+    let open = app.home.selected_path.is_some();
+    let mut pane_action = None;
 
-    if toggle_right_sidebar {
-        let home = &mut app.home;
-        home.show_right_sidebar = !home.show_right_sidebar;
-        app.settings.right_sidebar.visible = home.show_right_sidebar;
-        if let Err(e) = app.settings.save() {
-            home.error_msg = Some(format!("Failed to save settings: {e}"));
+    if open && app.home.pane_placement == PanePlacement::Side {
+        let panel = egui::Panel::right("entry_pane")
+            .resizable(true)
+            .default_size(app.home.pane_width)
+            .size_range(300.0..=720.0)
+            .show(ui, |ui| {
+                ui.add_space(4.0);
+                entry_pane::show(&mut app.home, ui)
+            });
+        pane_action = panel.inner;
+        // Remember a resize once the drag is over.
+        let width = panel.response.rect.width();
+        if (width - app.home.pane_width).abs() > 1.0 && !ui.ctx().input(|i| i.pointer.any_down()) {
+            app.home.pane_width = width;
+            app.settings.pane.width = width;
+            save_settings(app);
         }
     }
-
-    egui::Panel::left("entry_sidebar")
-        .resizable(true)
-        .default_size(280.0)
-        .size_range(220.0..=480.0)
-        .show(ui, |ui| {
-            draw_sidebar(app, ui);
-        });
-
-    // Decide whether the right sidebar fits as a panel or needs to overlay.
-    // Threshold mirrors keeping left(280) + center(340) + right(280) usable.
-    let show_right = app.home.show_right_sidebar;
-    let overlay = ui.available_width() < 900.0;
-    let tab_before = app.home.right_sidebar_tab;
-
-    if show_right && !overlay {
-        let initial_width = app.home.right_sidebar_width;
-        egui::Panel::right("metadata_sidebar")
-            .resizable(true)
-            .default_size(initial_width)
-            .size_range(220.0..=480.0)
-            .show(ui, |ui| {
-                crate::screens::right_sidebar::draw(&mut app.home, ui);
-            });
-    }
-
-    // Capture the y where the central panel starts so the overlay can sit
-    // flush under the top header.
-    let overlay_top = ui.cursor().min.y;
 
     egui::CentralPanel::default().show(ui, |ui| {
-        egui::Panel::top("home_calendar")
-            .resizable(false)
-            .show(ui, |ui| {
-                draw_home_calendar(app, ui);
+        draw_toolbar(app, ui);
+        let home = &mut app.home;
+        if let Some(msg) = home.error_msg.clone() {
+            ui.horizontal(|ui| {
+                ui.colored_label(egui::Color32::LIGHT_RED, msg);
+                if ui.small_button("×").clicked() {
+                    home.error_msg = None;
+                }
             });
-        draw_editor_panel(app, ui);
+        }
+        if let Some(msg) = &home.entries_error {
+            ui.colored_label(egui::Color32::LIGHT_RED, msg);
+            ui.weak("Pick or create a journal in Settings → Workspace, and make sure the sapphire-journal server is running.");
+        }
+        ui.separator();
+
+        let filtered = filter_and_sort(home);
+        match home.view {
+            MainView::List => draw_list(home, filtered, ui),
+            MainView::Kanban => kanban::show(home, &filtered, ui),
+        }
     });
 
-    if show_right && overlay {
-        crate::screens::right_sidebar::draw_overlay(ui.ctx(), &mut app.home, overlay_top);
-    }
-
-    if show_right {
-        let tab_after = app.home.right_sidebar_tab;
-        if tab_before != tab_after {
-            app.settings.right_sidebar.active_tab = tab_after;
-            if let Err(e) = app.settings.save() {
-                app.home.error_msg = Some(format!("Failed to save settings: {e}"));
-            }
-        }
-    }
-
-    // Confirm-delete-entry inline dialog
-    if app.home.confirm_delete_entry {
+    if open && app.home.pane_placement == PanePlacement::Floating {
         let ctx = ui.ctx().clone();
-        draw_confirm_delete_entry(app, &ctx);
+        let title = entry_pane::title(&app.home);
+        egui::Window::new(title)
+            .id(egui::Id::new("entry_pane_window"))
+            .title_bar(false)
+            .resizable(true)
+            .default_size([420.0, 560.0])
+            // Where the docked pane would be: at the right, under the toolbar.
+            .pivot(egui::Align2::RIGHT_TOP)
+            .default_pos(ctx.content_rect().right_top() + egui::vec2(-16.0, 48.0))
+            .min_width(300.0)
+            .constrain_to(ctx.content_rect())
+            .show(&ctx, |ui| {
+                pane_action = entry_pane::show(&mut app.home, ui);
+            });
+    }
+
+    match pane_action {
+        Some(PaneAction::Place(placement)) => {
+            app.home.pane_placement = placement;
+            app.settings.pane.placement = placement;
+            save_settings(app);
+        }
+        None => {}
+    }
+
+    let ctx = ui.ctx().clone();
+    if app.home.confirm_delete.is_some() {
+        draw_confirm_delete_entry(&mut app.home, &ctx);
+    }
+    if app.home.unsaved.is_some() {
+        draw_confirm_unsaved(&mut app.home, &ctx);
     }
 }
 
-// ── Sidebar ──────────────────────────────────────────────────────────────────
+fn save_settings(app: &mut App) {
+    if let Err(e) = app.settings.save() {
+        app.home.error_msg = Some(format!("Failed to save settings: {e}"));
+    }
+}
 
-fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
-    let home = &mut app.home;
+// ── Toolbar ──────────────────────────────────────────────────────────────────
 
-    // Toolbar: New Entry + Refresh + view mode toggle
+/// The view's toolbar: the journal menu, the period, search, and which view.
+fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
+    let mut view = app.home.view;
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        if icon_text_btn(ui, icons::plus(), "New Entry").clicked() {
-            home.api.prepare(None);
+        draw_journal_menu(app, ui);
+        let home = &mut app.home;
+        let entries = &home.entries;
+        period_picker(ui, &mut home.period, &mut home.calendar_cursor, &|d| {
+            count_on(entries, d)
+        });
+        ui.add(
+            egui::TextEdit::singleline(&mut home.filter_text)
+                .hint_text("Search title / tag / id")
+                .desired_width(200.0),
+        );
+        if home.sync_in_progress {
+            ui.add(egui::Spinner::new().size(14.0));
+            // While a refresh is running, keep painting so the spinner
+            // animates even without user input.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
         }
-        if icon_btn(ui, icons::refresh(), "Refresh entry list").clicked() {
-            home.reload();
-        }
+
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Show the icon for the *other* mode (i.e. what clicking would switch to).
-            let (icon, tooltip) = match home.view_mode {
-                ViewMode::Tree => (icons::list_view(), "Switch to list view"),
-                ViewMode::List => (icons::tree_view(), "Switch to tree view"),
-            };
-            if icon_btn(ui, icon, tooltip).clicked() {
-                home.view_mode = match home.view_mode {
-                    ViewMode::Tree => ViewMode::List,
-                    ViewMode::List => ViewMode::Tree,
+            if icon_text_btn(ui, icons::plus(), "New Entry").clicked() {
+                home.new_entry(None);
+            }
+            if icon_btn(ui, icons::refresh(), "Refresh entry list").clicked() {
+                home.reload();
+            }
+            ui.separator();
+            ui.selectable_value(&mut view, MainView::Kanban, "Kanban");
+            ui.selectable_value(&mut view, MainView::List, "List");
+            if view == MainView::List {
+                // Show the icon for the *other* layout (what clicking would switch to).
+                let (icon, tooltip) = match home.list_layout {
+                    ListLayout::Tree => (icons::list_view(), "Show as a flat list"),
+                    ListLayout::Flat => (icons::tree_view(), "Show as a tree"),
                 };
+                if icon_btn(ui, icon, tooltip).clicked() {
+                    home.list_layout = match home.list_layout {
+                        ListLayout::Tree => ListLayout::Flat,
+                        ListLayout::Flat => ListLayout::Tree,
+                    };
+                }
             }
             let filters_tooltip = if home.show_filters {
-                "Hide filters"
+                "Hide sort options"
             } else {
-                "Show filters"
+                "Show sort options"
             };
             if icon_toggle_btn(ui, icons::funnel(), home.show_filters, filters_tooltip).clicked() {
                 home.show_filters = !home.show_filters;
             }
         });
     });
+
+    let home = &mut app.home;
+    if home.show_filters {
+        ui.horizontal(|ui| {
+            ui.label("Sort by");
+            egui::ComboBox::from_id_salt("home_sort_by")
+                .selected_text(sort_label(&home.sort_by))
+                .show_ui(ui, |ui| {
+                    for (value, label) in SORT_OPTIONS {
+                        ui.selectable_value(&mut home.sort_by, (*value).to_string(), *label);
+                    }
+                });
+            egui::ComboBox::from_id_salt("home_sort_order")
+                .selected_text(if home.sort_order == "asc" {
+                    "Ascending"
+                } else {
+                    "Descending"
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut home.sort_order, "desc".to_string(), "Descending");
+                    ui.selectable_value(&mut home.sort_order, "asc".to_string(), "Ascending");
+                });
+        });
+    }
     ui.add_space(4.0);
 
-    if let Some(msg) = home.error_msg.clone() {
-        ui.horizontal(|ui| {
-            ui.colored_label(egui::Color32::LIGHT_RED, msg);
-            if ui.small_button("×").clicked() {
-                home.error_msg = None;
-            }
-        });
-        ui.add_space(2.0);
+    if view != app.home.view {
+        app.home.view = view;
+        app.settings.view = view;
+        save_settings(app);
     }
+}
 
-    // Search input
-    ui.label("Search");
-    ui.add(
-        egui::TextEdit::singleline(&mut home.filter_text)
-            .hint_text("Title / tag / id")
-            .desired_width(f32::INFINITY),
-    );
+/// How many entries fall on `date`, for the period picker's dots. Mirrors
+/// the filter applied in `filter_and_sort`, so the dots match what the view
+/// shows after a click.
+fn count_on(entries: &[EntryHeader], date: NaiveDate) -> usize {
+    let filter = period_filter(Period::Range(
+        date.and_hms_opt(0, 0, 0).unwrap(),
+        date.and_hms_opt(23, 59, 59).unwrap(),
+    ));
+    entries.iter().filter(|e| filter.matches(e).0).count()
+}
 
-    if home.show_filters {
-        ui.add_space(6.0);
-
-        ui.label("Sort by");
-        egui::ComboBox::from_id_salt("home_sort_by")
-            .selected_text(sort_label(&home.sort_by))
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for (value, label) in SORT_OPTIONS {
-                    ui.selectable_value(&mut home.sort_by, (*value).to_string(), *label);
-                }
-            });
-
-        ui.add_space(4.0);
-        ui.label("Order");
-        egui::ComboBox::from_id_salt("home_sort_order")
-            .selected_text(if home.sort_order == "asc" {
-                "Ascending"
-            } else {
-                "Descending"
-            })
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut home.sort_order, "desc".to_string(), "Descending");
-                ui.selectable_value(&mut home.sort_order, "asc".to_string(), "Ascending");
-            });
+fn period_filter(period: Period) -> EntryFilter {
+    EntryFilter {
+        period: Some(period),
+        fields: FieldSelector::active(),
+        task_status: Vec::new(),
+        tags: Vec::new(),
+        sort_by: CoreSortField::Unsorted,
+        sort_order: CoreSortOrder::Asc,
+        // GUI は stale/hidden をまだ扱わない（別タスク）。従来どおり全件表示。
+        include_stale: true,
+        include_hidden: true,
+        stale_after_days: 30,
     }
+}
 
-    ui.add_space(6.0);
-    ui.separator();
+// ── List view ────────────────────────────────────────────────────────────────
 
-    // Entry list
-    if let Some(msg) = &home.entries_error {
-        ui.colored_label(egui::Color32::LIGHT_RED, msg);
-        ui.weak("Pick or create a journal in Settings → Workspace, and make sure the sapphire-journal server is running.");
-    }
-
-    let filtered = filter_and_sort(home);
+fn draw_list(home: &mut HomeState, filtered: Vec<EntryHeader>, ui: &mut egui::Ui) {
     if filtered.is_empty() {
         ui.add_space(8.0);
         ui.weak("No entries match.");
@@ -231,56 +243,46 @@ fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
 
     let mut reparent_action: Option<(PathBuf, Option<GrainId>)> = None;
     let mut entry_action: Option<EntryAction> = None;
+    let mut want_select: Option<PathBuf> = None;
     egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
-        .show(ui, |ui| {
-            let mut want_select: Option<PathBuf> = None;
-            match home.view_mode {
-                ViewMode::List => {
-                    for header in &filtered {
-                        let path = PathBuf::from(header.path.clone());
-                        let is_active = home.selected_path.as_ref() == Some(&path);
-                        if draw_entry_row(ui, header, is_active, &mut entry_action).clicked() {
-                            want_select = Some(path);
-                        }
+        .show(ui, |ui| match home.list_layout {
+            ListLayout::Flat => {
+                for header in &filtered {
+                    let path = PathBuf::from(header.path.clone());
+                    let is_active = home.selected_path.as_ref() == Some(&path);
+                    if draw_entry_row(ui, header, is_active, &mut entry_action).clicked() {
+                        want_select = Some(path);
                     }
                 }
-                ViewMode::Tree => {
-                    // Root drop zone: dropping above the first row clears `parent_id`.
-                    draw_root_drop_zone(ui, &home.entries, &mut reparent_action);
-                    let pairs = filtered.into_iter().map(|h| (h, Vec::new())).collect();
-                    let tree = build_entry_tree(pairs);
-                    draw_tree(
-                        ui,
-                        &tree,
-                        0,
-                        &mut home.collapsed,
-                        &home.selected_path,
-                        &mut want_select,
-                        &home.entries,
-                        &mut reparent_action,
-                        &mut entry_action,
-                    );
-                }
             }
-            if let Some(path) = want_select
-                && home.selected_path.as_ref() != Some(&path)
-            {
-                home.select(path);
+            ListLayout::Tree => {
+                // Root drop zone: dropping above the first row clears `parent_id`.
+                draw_root_drop_zone(ui, &home.entries, &mut reparent_action);
+                let pairs = filtered.into_iter().map(|h| (h, Vec::new())).collect();
+                let tree = build_entry_tree(pairs);
+                draw_tree(
+                    ui,
+                    &tree,
+                    0,
+                    &mut home.collapsed,
+                    &home.selected_path,
+                    &mut want_select,
+                    &home.entries,
+                    &mut reparent_action,
+                    &mut entry_action,
+                );
             }
         });
 
+    if let Some(path) = want_select {
+        home.open(path);
+    }
     match entry_action {
-        Some(EntryAction::AddChild(parent_id)) => home.api.prepare(Some(parent_id)),
-        Some(EntryAction::RequestDelete(path)) => {
-            if home.selected_path.as_ref() != Some(&path) {
-                home.select(path);
-            }
-            home.confirm_delete_entry = true;
-        }
+        Some(EntryAction::AddChild(parent_id)) => home.new_entry(Some(parent_id)),
+        Some(EntryAction::RequestDelete(path)) => home.confirm_delete = Some(path),
         None => {}
     }
-
     if let Some((source_path, new_parent)) = reparent_action {
         home.api.reparent(source_path, new_parent);
     }
@@ -564,278 +566,9 @@ fn draw_entry_row(
     resp
 }
 
-// ── Home calendar (period picker) ────────────────────────────────────────────
+// ── Dialogs ──────────────────────────────────────────────────────────────────
 
-/// Renders the calendar above the editor.  Day / week / month clicks set
-/// `home.period` to a value `parse_period` understands.
-fn draw_home_calendar(app: &mut App, ui: &mut egui::Ui) {
-    let home = &mut app.home;
-
-    ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        let caret_src = if home.show_calendar {
-            icons::chevron_down()
-        } else {
-            icons::chevron_right()
-        };
-        let caret = egui::Image::new(caret_src)
-            .fit_to_exact_size(egui::vec2(14.0, 14.0))
-            .tint(ui.visuals().text_color());
-        if ui
-            .add(egui::Button::image_and_text(caret, "Calendar").frame(false))
-            .clicked()
-        {
-            home.show_calendar = !home.show_calendar;
-        }
-        ui.weak(period_summary(&home.period));
-    });
-
-    if !home.show_calendar {
-        return;
-    }
-
-    // Pre-compute Bullet Journal-style entry counts for every cell on the
-    // displayed grid (6 weeks × 7 days, including spillover from adjacent
-    // months).  Mirrors the filter applied in `filter_and_sort` so the
-    // badge dots match what the user will see after clicking.
-    let grid_start = grid_start_for_month(home.calendar_cursor);
-    let mut counts: HashMap<NaiveDate, usize> = HashMap::new();
-    for offset in 0..42 {
-        let date = grid_start + Duration::days(offset);
-        let period = Period::Range(
-            date.and_hms_opt(0, 0, 0).unwrap(),
-            date.and_hms_opt(23, 59, 59).unwrap(),
-        );
-        let filter = EntryFilter {
-            period: Some(period),
-            fields: FieldSelector::active(),
-            task_status: Vec::new(),
-            tags: Vec::new(),
-            sort_by: CoreSortField::Unsorted,
-            sort_order: CoreSortOrder::Asc,
-            // GUI は stale/hidden をまだ扱わない（別タスク）。従来どおり全件表示。
-            include_stale: true,
-            include_hidden: true,
-            stale_after_days: 30,
-        };
-        let n = home.entries.iter().filter(|e| filter.matches(e).0).count();
-        if n > 0 {
-            counts.insert(date, n);
-        }
-    }
-
-    // Highlight whatever period is currently active.  Falls back to no
-    // highlight when the string is empty or unparseable.
-    let selection = parse_period(home.period.trim())
-        .map(|p| month_grid::selection_from_period(&p))
-        .unwrap_or(Selection::None);
-
-    let counts_ref = &counts;
-    let resp = MonthGrid::new("home_calendar", &mut home.calendar_cursor)
-        .selection(selection)
-        .show_week_column(true)
-        .day_badge(&|d| counts_ref.get(&d).copied().unwrap_or(0))
-        .show(ui);
-
-    if let Some(d) = resp.day_clicked {
-        home.period = d.format("%Y-%m-%d").to_string();
-    } else if let Some(monday) = resp.week_clicked {
-        let (s, e) = week_bounds(monday);
-        home.period = format_period_range(s, e);
-    } else if let Some((y, m)) = resp.month_clicked {
-        let (s, e) = month_bounds(y, m);
-        home.period = format_period_range(s, e);
-    } else if resp.today_clicked {
-        home.period = "today".to_string();
-    } else if resp.clear_clicked {
-        home.period.clear();
-    }
-    ui.add_space(2.0);
-}
-
-/// Return the Monday at-or-before the 1st of the month containing `cursor` —
-/// matches the layout used by [`MonthGrid`] so we can pre-walk the grid here
-/// to compute badge counts.
-fn grid_start_for_month(cursor: NaiveDate) -> NaiveDate {
-    use chrono::Datelike as _;
-    let first = NaiveDate::from_ymd_opt(cursor.year(), cursor.month(), 1).unwrap();
-    let lead = first.weekday().num_days_from_monday() as i64;
-    first - Duration::days(lead)
-}
-
-/// Human-readable hint shown next to the calendar caret.  Best-effort —
-/// returns "All entries" when no period is set or the value can't be parsed.
-fn period_summary(period: &str) -> String {
-    let s = period.trim();
-    if s.is_empty() {
-        return "All entries".to_string();
-    }
-    match parse_period(s) {
-        Ok(Period::Range(start, end)) => {
-            let sd = start.date();
-            let ed = end.date();
-            if sd == ed {
-                sd.format("%Y-%m-%d").to_string()
-            } else {
-                format!("{} – {}", sd.format("%Y-%m-%d"), ed.format("%Y-%m-%d"))
-            }
-        }
-        Ok(Period::None) => "Unset field".to_string(),
-        Err(_) => s.to_string(),
-    }
-}
-
-// ── Editor panel ─────────────────────────────────────────────────────────────
-
-fn draw_editor_panel(app: &mut App, ui: &mut egui::Ui) {
-    let home = &mut app.home;
-    if home.editor.is_none() {
-        ui.vertical_centered(|ui| {
-            ui.add_space(40.0);
-            if home.selected_path.is_some() {
-                ui.spinner();
-            } else {
-                ui.heading("No entry selected");
-                ui.label("Pick an entry from the sidebar, or create a new one.");
-            }
-        });
-        return;
-    }
-    if draw_editor_panel_inner(home, ui) {
-        save_current_entry(home);
-    }
-}
-
-/// Renders the editor body using an exclusive `&mut HomeState`.  Returns
-/// `true` when the Save button was clicked.
-fn draw_editor_panel_inner(home: &mut HomeState, ui: &mut egui::Ui) -> bool {
-    let mut do_save = false;
-
-    // Header bar: id + action buttons
-    let mut do_request_delete = false;
-    {
-        let editor = home.editor.as_ref().unwrap();
-        ui.horizontal(|ui| {
-            ui.weak(format!("@{}", editor.id));
-            if let Some(msg) = &home.info_msg {
-                ui.colored_label(egui::Color32::LIGHT_GREEN, msg);
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Save").clicked() {
-                    do_save = true;
-                }
-                if icon_text_btn(ui, icons::trash(), "Delete").clicked() {
-                    do_request_delete = true;
-                }
-            });
-        });
-    }
-
-    if do_request_delete {
-        home.confirm_delete_entry = true;
-    }
-
-    ui.separator();
-
-    egui::ScrollArea::vertical()
-        .auto_shrink([false; 2])
-        .show(ui, |ui| {
-            let editor = home.editor.as_mut().unwrap();
-
-            ui.label("Title");
-            ui.add(
-                egui::TextEdit::singleline(&mut editor.title)
-                    .hint_text("Untitled")
-                    .desired_width(f32::INFINITY),
-            );
-            ui.add_space(8.0);
-
-            ui.label("Tags (comma-separated)");
-            ui.add(
-                egui::TextEdit::singleline(&mut editor.tags)
-                    .hint_text("work, journal")
-                    .desired_width(f32::INFINITY),
-            );
-            ui.add_space(8.0);
-
-            // Task fieldset
-            ui.group(|ui| {
-                ui.checkbox(&mut editor.has_task, "Task");
-                if editor.has_task {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label("Status");
-                            egui::ComboBox::from_id_salt("editor_task_status")
-                                .selected_text(&editor.task_status)
-                                .show_ui(ui, |ui| {
-                                    for s in TASK_STATUS_OPTIONS {
-                                        ui.selectable_value(
-                                            &mut editor.task_status,
-                                            (*s).to_string(),
-                                            *s,
-                                        );
-                                    }
-                                });
-                        });
-                        ui.vertical(|ui| {
-                            ui.label("Due (YYYY-MM-DD)");
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut editor.task_due)
-                                        .hint_text("2026-05-16")
-                                        .desired_width(140.0),
-                                );
-                                date_picker_button(ui, "task_due", &mut editor.task_due);
-                            });
-                        });
-                    });
-                }
-            });
-            ui.add_space(6.0);
-
-            // Event fieldset
-            ui.group(|ui| {
-                ui.checkbox(&mut editor.has_event, "Event");
-                if editor.has_event {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label("Start (YYYY-MM-DD)");
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut editor.event_start)
-                                        .desired_width(140.0),
-                                );
-                                date_picker_button(ui, "event_start", &mut editor.event_start);
-                            });
-                        });
-                        ui.vertical(|ui| {
-                            ui.label("End (YYYY-MM-DD)");
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut editor.event_end)
-                                        .desired_width(140.0),
-                                );
-                                date_picker_button(ui, "event_end", &mut editor.event_end);
-                            });
-                        });
-                    });
-                }
-            });
-            ui.add_space(8.0);
-
-            ui.label("Body (Markdown)");
-            ui.add(
-                egui::TextEdit::multiline(&mut editor.body)
-                    .desired_rows(20)
-                    .desired_width(f32::INFINITY)
-                    .code_editor(),
-            );
-        });
-
-    do_save
-}
-
-fn draw_confirm_delete_entry(app: &mut App, ctx: &egui::Context) {
+fn draw_confirm_delete_entry(home: &mut HomeState, ctx: &egui::Context) {
     let mut cancel = false;
     let mut confirm = false;
     let mut open = true;
@@ -862,23 +595,63 @@ fn draw_confirm_delete_entry(app: &mut App, ctx: &egui::Context) {
             });
         });
 
-    if !open {
-        cancel = true;
+    if !open || cancel {
+        home.confirm_delete = None;
     }
-
-    let home = &mut app.home;
-    if cancel {
-        home.confirm_delete_entry = false;
-    }
-    if confirm {
-        home.confirm_delete_entry = false;
-        if let Some(path) = home.selected_path.clone() {
-            home.api.remove(path);
-        }
+    if confirm && let Some(path) = home.confirm_delete.take() {
+        home.api.remove(path);
     }
 }
 
-// ── Sidebar filtering ────────────────────────────────────────────────────────
+/// Asked before something would throw away the open entry's changes:
+/// save them first, drop them, or stay.
+fn draw_confirm_unsaved(home: &mut HomeState, ctx: &egui::Context) {
+    let title = entry_pane::title(home);
+    let quitting = home.unsaved == Some(Pending::Quit);
+    let mut save = false;
+    let mut discard = false;
+    let mut cancel = false;
+
+    let modal = egui::Modal::new(egui::Id::new("unsaved_changes")).show(ctx, |ui| {
+        ui.set_width(360.0);
+        ui.heading("Unsaved changes");
+        ui.add_space(4.0);
+        ui.label(format!("“{title}” has changes that are not saved."));
+        ui.add_space(8.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("Save").clicked() {
+                save = true;
+            }
+            let discard_label = if quitting {
+                "Quit without saving"
+            } else {
+                "Discard"
+            };
+            if ui.button(discard_label).clicked() {
+                discard = true;
+            }
+            if ui.button("Cancel").clicked() {
+                cancel = true;
+            }
+        });
+    });
+
+    if save {
+        let pending = home.unsaved.take();
+        // A form that does not make an entry stays open, with the reason.
+        if entry_pane::save_current_entry(home) {
+            home.after_save = pending;
+        }
+    } else if discard {
+        if let Some(pending) = home.unsaved.take() {
+            home.perform(pending);
+        }
+    } else if cancel || modal.should_close() {
+        home.unsaved = None;
+    }
+}
+
+// ── Filtering ────────────────────────────────────────────────────────
 
 fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     let mut headers = home.entries.clone();
@@ -887,18 +660,7 @@ fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     if !home.period.trim().is_empty()
         && let Ok(period) = parse_period(home.period.trim())
     {
-        let filter = EntryFilter {
-            period: Some(period),
-            fields: FieldSelector::active(),
-            task_status: Vec::new(),
-            tags: Vec::new(),
-            sort_by: CoreSortField::Unsorted,
-            sort_order: CoreSortOrder::Asc,
-            // GUI は stale/hidden をまだ扱わない（別タスク）。従来どおり全件表示。
-            include_stale: true,
-            include_hidden: true,
-            stale_after_days: 30,
-        };
+        let filter = period_filter(period);
         headers.retain(|h| filter.matches(h).0);
     }
 
@@ -949,124 +711,6 @@ fn cmp_opt<T: Ord>(a: Option<T>, b: Option<T>) -> std::cmp::Ordering {
     }
 }
 
-// ── Editor ↔ entry ───────────────────────────────────────────────────────────
-
-/// The editor's form for an entry the server returned.
-pub fn editor_for(entry: Entry) -> EditorState {
-    let fm = &entry.frontmatter;
-    EditorState {
-        id: fm.id.to_string(),
-        title: fm.title.clone(),
-        tags: fm.tags.join(", "),
-        body: entry.body.clone(),
-        has_task: fm.task.is_some(),
-        task_status: fm
-            .task
-            .as_ref()
-            .map(|t| t.status.clone())
-            .unwrap_or_else(|| "open".to_string()),
-        task_due: fm
-            .task
-            .as_ref()
-            .and_then(|t| t.due)
-            .map(|d| d.format("%Y-%m-%d").to_string())
-            .unwrap_or_default(),
-        has_event: fm.event.is_some(),
-        event_start: fm
-            .event
-            .as_ref()
-            .map(|e| e.start.format("%Y-%m-%d").to_string())
-            .unwrap_or_default(),
-        event_end: fm
-            .event
-            .as_ref()
-            .map(|e| e.end.format("%Y-%m-%d").to_string())
-            .unwrap_or_default(),
-        base: entry,
-    }
-}
-
-/// Write the form over the entry it was loaded from and send it to the
-/// server, which saves it, normalizes it and answers with its path.
-fn save_current_entry(home: &mut HomeState) {
-    let Some(editor) = home.editor.as_ref() else {
-        return;
-    };
-    home.error_msg = None;
-    home.info_msg = None;
-    match entry_from_editor(editor) {
-        Ok(entry) => home.api.save(entry),
-        Err(msg) => home.error_msg = Some(msg),
-    }
-}
-
-fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
-    let mut entry = editor.base.clone();
-    entry.frontmatter.title = editor.title.clone();
-    entry.frontmatter.tags = editor
-        .tags
-        .split(',')
-        .map(|t| t.trim().to_string())
-        .filter(|t| !t.is_empty())
-        .collect();
-    entry.body = editor.body.clone();
-
-    if editor.has_task {
-        let due = if editor.task_due.trim().is_empty() {
-            None
-        } else {
-            Some(
-                sapphire_journal_core::period::parse_datetime_end(editor.task_due.trim())
-                    .map_err(|e| format!("task.due: {e}"))?,
-            )
-        };
-        let status = if editor.task_status.is_empty() {
-            "open".to_string()
-        } else {
-            editor.task_status.clone()
-        };
-        let prev = entry.frontmatter.task.take();
-        entry.frontmatter.task = Some(sapphire_journal_core::entry::TaskMeta {
-            due,
-            status,
-            started_at: prev.as_ref().and_then(|t| t.started_at),
-            closed_at: prev.as_ref().and_then(|t| t.closed_at),
-            extra: prev.map(|t| t.extra).unwrap_or_default(),
-        });
-    } else {
-        entry.frontmatter.task = None;
-    }
-
-    if editor.has_event {
-        if editor.event_start.trim().is_empty() && editor.event_end.trim().is_empty() {
-            return Err("event requires a start or end date".to_string());
-        }
-        let start_str = if editor.event_start.trim().is_empty() {
-            editor.event_end.trim()
-        } else {
-            editor.event_start.trim()
-        };
-        let end_str = if editor.event_end.trim().is_empty() {
-            editor.event_start.trim()
-        } else {
-            editor.event_end.trim()
-        };
-        let start = sapphire_journal_core::period::parse_datetime(start_str)
-            .map_err(|e| format!("event.start: {e}"))?;
-        let end = sapphire_journal_core::period::parse_datetime_end(end_str)
-            .map_err(|e| format!("event.end: {e}"))?;
-        let prev = entry.frontmatter.event.take();
-        entry.frontmatter.event = Some(sapphire_journal_core::entry::EventMeta {
-            start,
-            end,
-            extra: prev.map(|e| e.extra).unwrap_or_default(),
-        });
-    } else {
-        entry.frontmatter.event = None;
-    }
-    Ok(entry)
-}
-
 // ── Journal menu ────────────────────────────────────────────────────────────
 
 /// Top-left journal menu: refresh and settings. Which journal is served is
@@ -1087,7 +731,12 @@ fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
     let caret = egui::Image::new(icons::chevron_down())
         .fit_to_exact_size(egui::vec2(14.0, 14.0))
         .tint(ui.visuals().text_color());
-    ui.menu_button((name, caret), |ui| {
+    let root = app
+        .home
+        .journal_root
+        .as_ref()
+        .map(|root| root.display().to_string());
+    let menu = ui.menu_button((name, caret), |ui| {
         if ui.button("Refresh").clicked() {
             refresh_now = true;
             ui.close();
@@ -1101,6 +750,9 @@ fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
             ui.close();
         }
     });
+    if let Some(root) = root {
+        menu.response.on_hover_text(root);
+    }
 
     if refresh_now {
         let home = &mut app.home;
@@ -1119,40 +771,6 @@ fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
 }
 
 // ── Display helpers ─────────────────────────────────────────────────────────
-
-/// Square icon-only button (16×16) with a tooltip.
-fn icon_btn(ui: &mut egui::Ui, src: egui::ImageSource<'static>, tooltip: &str) -> egui::Response {
-    let tint = ui.visuals().text_color();
-    let img = egui::Image::new(src)
-        .fit_to_exact_size(egui::vec2(16.0, 16.0))
-        .tint(tint);
-    ui.add(egui::Button::image(img)).on_hover_text(tooltip)
-}
-
-/// Toggleable icon button — renders with a pressed/highlighted background
-/// when `active` is true.
-fn icon_toggle_btn(
-    ui: &mut egui::Ui,
-    src: egui::ImageSource<'static>,
-    active: bool,
-    tooltip: &str,
-) -> egui::Response {
-    let tint = ui.visuals().text_color();
-    let img = egui::Image::new(src)
-        .fit_to_exact_size(egui::vec2(16.0, 16.0))
-        .tint(tint);
-    ui.add(egui::Button::image(img).selected(active))
-        .on_hover_text(tooltip)
-}
-
-/// Icon + text button (14×14 icon to align with the label height).
-fn icon_text_btn(ui: &mut egui::Ui, src: egui::ImageSource<'static>, text: &str) -> egui::Response {
-    let tint = ui.visuals().text_color();
-    let img = egui::Image::new(src)
-        .fit_to_exact_size(egui::vec2(14.0, 14.0))
-        .tint(tint);
-    ui.add(egui::Button::image_and_text(img, text))
-}
 
 /// Exact width reserved for the tree expand/collapse toggle (and the
 /// matching leaf spacer).  Kept narrow so titles align with leaf rows.
@@ -1187,5 +805,3 @@ fn sort_label(value: &str) -> &'static str {
         .map(|(_, l)| *l)
         .unwrap_or("Updated")
 }
-
-const TASK_STATUS_OPTIONS: &[&str] = &["open", "in_progress", "done", "cancelled", "archived"];

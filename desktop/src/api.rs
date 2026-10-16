@@ -31,13 +31,22 @@ pub enum Reply {
     /// The editor's entry was written; its path now (a new title renames it).
     Saved(PathBuf, Result<PathBuf, String>),
     Removed(PathBuf, Result<(), String>),
-    /// An entry's parent changed; its path now.
-    Reparented(PathBuf, Result<PathBuf, String>),
+    /// An entry's parent or task status changed; what changed, and its
+    /// path now.
+    Modified(PathBuf, Change, Result<PathBuf, String>),
     /// The entry cache was re-scanned.
     Refreshed(Result<(), String>),
     /// The settings, read or just changed.
     Settings(Result<JournalSettings, String>),
     SettingsSaved(Result<JournalSettings, String>),
+}
+
+/// What a [`Reply::Modified`] changed.
+#[derive(Clone, PartialEq, Eq)]
+pub enum Change {
+    Parent,
+    /// The status the task was moved to.
+    TaskStatus(String),
 }
 
 /// A handle for sending requests; cheap to clone into each part of the UI.
@@ -133,13 +142,24 @@ impl Api {
     }
 
     pub fn reparent(&self, path: PathBuf, parent: Option<GrainId>) {
+        let mut params = EntryModifyParams::of(EntryRef::Path(path.clone()));
+        params.parent = match parent {
+            Some(id) => UpdateOption::Set(EntryRef::Id(id)),
+            None => UpdateOption::Clear,
+        };
+        self.modify(path, Change::Parent, params);
+    }
+
+    /// Move a task to `status` (the kanban's columns).
+    pub fn set_task_status(&self, path: PathBuf, status: String) {
+        let mut params = EntryModifyParams::of(EntryRef::Path(path.clone()));
+        params.task_status = Some(status.clone());
+        self.modify(path, Change::TaskStatus(status), params);
+    }
+
+    fn modify(&self, path: PathBuf, change: Change, params: EntryModifyParams) {
         let client = Arc::clone(&self.client);
         self.spawn(async move {
-            let mut params = EntryModifyParams::of(EntryRef::Path(path.clone()));
-            params.parent = match parent {
-                Some(id) => UpdateOption::Set(EntryRef::Id(id)),
-                None => UpdateOption::Clear,
-            };
             // "updated: <path>" or "updated and renamed: <path>".
             let result = client.call(api::ENTRY_MODIFY, params).await.map(|text| {
                 text.strip_prefix("updated and renamed: ")
@@ -147,7 +167,7 @@ impl Api {
                     .map(PathBuf::from)
                     .unwrap_or_else(|| path.clone())
             });
-            Reply::Reparented(path, result)
+            Reply::Modified(path, change, result)
         });
     }
 

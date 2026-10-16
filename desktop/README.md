@@ -2,7 +2,7 @@
 
 Cross-platform desktop GUI for [sapphire-journal](https://github.com/sapphire-turtle/sapphire-journal) — a Markdown-based task and note manager. Built with [egui](https://github.com/emilk/egui) / eframe.
 
-The desktop app is the primary human-facing UI: an editor, tree view, calendar and settings panel for working with entries. It is a client of the `sapphire-journal` server, which it reaches over IPC and never starts itself: the **Journal** tab shows the journal the server serves, and the **Sync** tab (sapphire-framework's sync panel) chooses that journal — open a folder, create one, or bring one from the workgroup — and manages sync. Run the server with `sapphire-journal service install` (or `sapphire-journal serve`).
+The desktop app is the primary human-facing UI: the entries as a list (or tree) or a kanban of tasks, filtered by a period picked on a calendar, with an editing pane docked at the right or floating over the view. It is a client of the `sapphire-journal` server, which it reaches over IPC and never starts itself: the **Journal** tab shows the journal the server serves, and the **Sync** tab (sapphire-framework's sync panel) chooses that journal — open a folder, create one, or bring one from the workgroup — and manages sync. Run the server with `sapphire-journal service install` (or `sapphire-journal serve`).
 
 ## Installation
 

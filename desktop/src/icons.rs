@@ -34,17 +34,23 @@ pub fn chevron_down() -> egui::ImageSource<'static> {
 pub fn chevron_right() -> egui::ImageSource<'static> {
     icon!("chevron-right")
 }
+pub fn close() -> egui::ImageSource<'static> {
+    icon!("x")
+}
+pub fn ellipsis() -> egui::ImageSource<'static> {
+    icon!("ellipsis")
+}
 pub fn funnel() -> egui::ImageSource<'static> {
     icon!("funnel")
+}
+pub fn info() -> egui::ImageSource<'static> {
+    icon!("info")
 }
 pub fn list_view() -> egui::ImageSource<'static> {
     icon!("list")
 }
 pub fn tree_view() -> egui::ImageSource<'static> {
     icon!("folder-tree")
-}
-pub fn panel_right() -> egui::ImageSource<'static> {
-    icon!("panel-right")
 }
 pub fn plus() -> egui::ImageSource<'static> {
     icon!("plus")
