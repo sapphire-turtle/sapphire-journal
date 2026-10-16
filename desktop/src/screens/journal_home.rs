@@ -14,7 +14,7 @@ use sapphire_journal_core::{
     period::{Period, parse_period},
 };
 
-use crate::app::{App, EditorState, HomeState, Tab, ViewMode};
+use crate::app::{App, EditorState, HomeState, ViewMode};
 use crate::icons;
 use crate::widgets::date_picker::date_picker_button;
 use crate::widgets::month_grid::{
@@ -127,12 +127,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         draw_confirm_delete_entry(app, &ctx);
     }
-
-    // Settings panel (opened from the journal-switcher menu)
-    if app.settings_panel.is_some() {
-        let ctx = ui.ctx().clone();
-        crate::screens::settings_panel::show(app, &ctx);
-    }
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -225,7 +219,7 @@ fn draw_sidebar(app: &mut App, ui: &mut egui::Ui) {
     // Entry list
     if let Some(msg) = &home.entries_error {
         ui.colored_label(egui::Color32::LIGHT_RED, msg);
-        ui.weak("Pick or create a journal in the Sync tab, and make sure the sapphire-journal server is running.");
+        ui.weak("Pick or create a journal in Settings → Workspace, and make sure the sapphire-journal server is running.");
     }
 
     let filtered = filter_and_sort(home);
@@ -1076,7 +1070,7 @@ fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
 // ── Journal menu ────────────────────────────────────────────────────────────
 
 /// Top-left journal menu: refresh and settings. Which journal is served is
-/// chosen in the Sync tab.
+/// chosen in Settings → Workspace.
 fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
     let name = app
         .home
@@ -1118,11 +1112,9 @@ fn draw_journal_menu(app: &mut App, ui: &mut egui::Ui) {
             home.error_msg = None;
             home.api.refresh();
         }
-    } else if open_settings {
-        app.settings_panel = Some(crate::screens::settings_panel::SettingsPanelState::open());
-        app.api.settings();
-    } else if choose_journal {
-        app.tab = Tab::Sync;
+    } else if open_settings || choose_journal {
+        // Settings holds both the journal's page and the workspace picker.
+        app.open_settings = true;
     }
 }
 

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! sapphire-journal's desktop app: the journal, and the framework's Settings.
+//! sapphire-journal's desktop app: the journal on the framework's shell,
+//! with its Settings.
 //!
 //! A pure client: it talks to the service-managed `sapphire-journal serve` and
 //! `sapphire-bridge` over IPC and never starts either itself, nor opens the
-//! journal. The Journal tab calls the server's `sapphire-journal.*` methods, so
-//! it shows the journal the server has selected; the Sync tab picks that
-//! journal and manages the workgroup. Closing the window stops nothing.
+//! journal. The Journal screen calls the server's `sapphire-journal.*`
+//! methods, so it shows the journal the server has selected; Settings picks
+//! that journal and manages the workgroup. Closing the window stops nothing.
 
 use sapphire_framework::gui::app::{AppOptions, AppSetup};
 use sapphire_framework::gui::client::AppIdentity;
@@ -22,7 +23,7 @@ mod settings;
 mod widgets;
 
 use api::Api;
-use app::App;
+use app::Window;
 
 const APP: AppIdentity = AppIdentity {
     app_name: "sapphire-journal",
@@ -39,12 +40,7 @@ fn main() -> eframe::Result<()> {
             let journal_client =
                 JournalClient::new(APP.app_name, "desktop", APP.version, setup.endpoints.app);
             let (api, replies) = Api::new(setup.runtime, journal_client, setup.repaint);
-            Box::new(App::new(
-                api,
-                replies,
-                sapphire_framework::gui::Settings::new(setup.framework),
-                setup.data_dir,
-            ))
+            Box::new(Window::new(api, replies, setup.framework, setup.data_dir))
         },
     )
 }

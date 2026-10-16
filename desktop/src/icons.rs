@@ -22,6 +22,9 @@ macro_rules! icon {
 pub fn arrow_left() -> egui::ImageSource<'static> {
     icon!("arrow-left")
 }
+pub fn book_open() -> egui::ImageSource<'static> {
+    icon!("book-open")
+}
 pub fn calendar() -> egui::ImageSource<'static> {
     icon!("calendar")
 }
