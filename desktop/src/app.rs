@@ -4,9 +4,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use chrono::NaiveDate;
-use eframe::egui;
 use grain_id::GrainId;
-use sapphire_framework::gui::SyncPanel;
+use sapphire_framework::gui::Settings as FrameworkSettings;
+use sapphire_framework::gui::{eframe, egui};
 use sapphire_journal_core::entry::{Entry, EntryHeader};
 
 use crate::api::{Api, Reply};
@@ -33,11 +33,10 @@ pub struct App {
     pub home: HomeState,
     /// When `Some`, the Settings window is shown on top of the journal tab.
     pub settings_panel: Option<SettingsPanelState>,
-    pub sync: SyncPanel,
+    /// The framework's Settings: the workspace, sync, the workgroup, About.
+    pub sync: FrameworkSettings,
     pub api: Api,
     replies: mpsc::Receiver<Reply>,
-    // Keeps the clients' background tasks alive for the window's lifetime.
-    _runtime: tokio::runtime::Runtime,
 }
 
 /// State for the journal tab (sidebar + editor).
@@ -198,12 +197,12 @@ pub struct EditorState {
 
 impl App {
     pub fn new(
-        runtime: tokio::runtime::Runtime,
         api: Api,
         replies: mpsc::Receiver<Reply>,
-        sync: SyncPanel,
+        sync: FrameworkSettings,
+        data_dir: PathBuf,
     ) -> Self {
-        let settings = Settings::load().unwrap_or_default();
+        let settings = Settings::load(&data_dir);
         let mut home = HomeState::new(api.clone(), &settings);
         home.reload();
         api.settings();
@@ -215,7 +214,6 @@ impl App {
             sync,
             api,
             replies,
-            _runtime: runtime,
         }
     }
 

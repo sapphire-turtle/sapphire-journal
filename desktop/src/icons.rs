@@ -7,7 +7,7 @@
 //! installation).  Lucide SVGs use `stroke="currentColor"` so they tint via
 //! `egui::Image::tint`.
 
-use eframe::egui;
+use sapphire_framework::gui::egui;
 
 use sapphire_journal_core::labels::EntryFlag;
 

@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use chrono::{Duration, NaiveDate};
-use eframe::egui;
 use grain_id::GrainId;
+use sapphire_framework::gui::egui;
 
 use sapphire_journal_core::{
     entry::{Entry, EntryHeader},

@@ -4,7 +4,7 @@
 //!
 //! Opened from the journal menu in `journal_home`.
 
-use eframe::egui;
+use sapphire_framework::gui::egui;
 
 use sapphire_journal_api::{ConfigSetParams, JournalSettings};
 use sapphire_journal_core::journal::DuplicateTitlePolicy;

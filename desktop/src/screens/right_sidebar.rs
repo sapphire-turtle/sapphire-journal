@@ -3,7 +3,7 @@
 //! Hosted from `journal_home::show`, which decides whether to render this as
 //! a side panel (wide windows) or as a floating overlay (narrow windows).
 
-use eframe::egui;
+use sapphire_framework::gui::egui;
 
 use sapphire_journal_core::{entry::EntryHeader, labels::EntryFlag};
 

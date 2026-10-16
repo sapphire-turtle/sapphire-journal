@@ -5,7 +5,7 @@
 //! (week column hidden, no badges).
 
 use chrono::{Datelike, Duration, NaiveDate};
-use eframe::egui;
+use sapphire_framework::gui::egui;
 
 /// Highlighted range on the grid.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
