@@ -94,6 +94,8 @@ through, into `~/.local/bin`. Add `journal-desktop` for the desktop app. See the
 
 ```sh
 cargo binstall sapphire-journal
+# The desktop app is not on crates.io
+cargo binstall --git https://github.com/sapphire-turtle/sapphire-journal sapphire-journal-desktop
 ```
 
 ### From source
