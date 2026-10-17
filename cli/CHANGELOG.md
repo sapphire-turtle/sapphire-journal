@@ -2,6 +2,12 @@
 
 All notable changes to `sapphire-journal` and `sapphire-journal-core` are documented here.
 
+## [0.13.1](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.13.0...v0.13.1) - 2026-10-17
+
+### Added
+
+- let cargo binstall install the release binaries
+
 ## [0.13.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.11.1...v0.13.0) - 2026-10-15
 
 ### Added
