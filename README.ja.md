@@ -92,6 +92,8 @@ curl -fsSL https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/
 
 ```sh
 cargo binstall sapphire-journal
+# デスクトップアプリは crates.io にない
+cargo binstall --git https://github.com/sapphire-turtle/sapphire-journal sapphire-journal-desktop
 ```
 
 ### ソースから
