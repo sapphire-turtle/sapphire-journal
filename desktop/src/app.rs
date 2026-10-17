@@ -15,7 +15,7 @@ use crate::api::{Api, Change, Reply};
 use crate::icons;
 use crate::screens;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
-use crate::settings::{MainView, PanePlacement, Settings};
+use crate::settings::{ListLayout, MainView, PanePlacement, Settings};
 
 /// How often the journal tab re-reads the entry list on its own, to pick up
 /// what the CLI, an agent or sync wrote.
@@ -101,11 +101,13 @@ impl eframe::App for Window {
             app.home.view = view;
             screens::journal_home::show(app, ui);
         });
-        // Remember the view picked on the rail.
-        if self.app.settings.view != self.app.home.view {
-            self.app.settings.view = self.app.home.view;
-            if let Err(e) = self.app.settings.save() {
-                self.app.home.error_msg = Some(format!("Failed to save settings: {e}"));
+        // Remember the view picked on the rail, and the list's layout.
+        let (settings, home) = (&mut self.app.settings, &mut self.app.home);
+        if settings.view != home.view || settings.list_layout != home.list_layout {
+            settings.view = home.view;
+            settings.list_layout = home.list_layout;
+            if let Err(e) = settings.save() {
+                home.error_msg = Some(format!("Failed to save settings: {e}"));
             }
         }
         if std::mem::take(&mut self.app.open_settings) {
@@ -221,7 +223,7 @@ impl HomeState {
             selected_path: None,
             editor: None,
             view: settings.view,
-            list_layout: ListLayout::Tree,
+            list_layout: settings.list_layout,
             collapsed: HashSet::new(),
             show_filters: false,
             pane_placement: settings.pane.placement,
@@ -313,15 +315,6 @@ impl HomeState {
         self.info_msg = None;
         self.api.get(path);
     }
-}
-
-/// How the list view lays out entries.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ListLayout {
-    /// Hierarchical view following `parent_id` relationships.
-    Tree,
-    /// Flat list, ignoring hierarchy.
-    Flat,
 }
 
 /// Form fields for the entry currently being edited in the main panel.

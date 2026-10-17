@@ -15,6 +15,9 @@ pub struct Settings {
     /// How the journal screen lays out the entries.
     #[serde(default)]
     pub view: MainView,
+    /// How the list view lays out the entries.
+    #[serde(default)]
+    pub list_layout: ListLayout,
     /// Where an opened entry is shown.
     #[serde(default)]
     pub pane: PaneSettings,
@@ -32,6 +35,17 @@ pub enum MainView {
     List,
     /// Tasks in one column per status.
     Kanban,
+}
+
+/// How the list view lays out entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ListLayout {
+    /// Hierarchical view following `parent_id` relationships.
+    #[default]
+    Tree,
+    /// Flat list, ignoring hierarchy.
+    Flat,
 }
 
 /// Persisted state of the entry pane.

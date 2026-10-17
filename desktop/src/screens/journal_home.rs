@@ -14,11 +14,11 @@ use sapphire_journal_core::{
     period::{Period, parse_period},
 };
 
-use crate::app::{App, HomeState, ListLayout, Pending};
+use crate::app::{App, HomeState, Pending};
 use crate::icons;
 use crate::screens::entry_pane::{self, PaneAction};
 use crate::screens::kanban;
-use crate::settings::{MainView, PanePlacement};
+use crate::settings::{ListLayout, MainView, PanePlacement};
 use crate::widgets::buttons::{icon_btn, icon_text_btn, icon_toggle_btn};
 use crate::widgets::period_picker::period_picker;
 
