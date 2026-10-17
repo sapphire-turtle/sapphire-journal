@@ -1,6 +1,6 @@
 [package]
 name = "sapphire-journal-desktop"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["fluo10 <fluo10@fireturtle.net>"]
 edition.workspace = true
 description.workspace = true
@@ -12,9 +12,9 @@ publish = false
 # The entry types the server's answers deserialize into, and the methods'
 # parameters and names. The desktop reads nothing from the journal itself:
 # it is a client of the `sapphire-journal` server.
-sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.13.0" }
+sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.13.1" }
 sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "2.0.0" }
-sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.2.0" }
+sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.2.1" }
 # `eframe`: `gui::app::run` starts the window, and `gui::{eframe, egui}` are the
 # versions it renders with.
 sapphire-framework = { workspace = true, features = ["eframe", "ipc"] }

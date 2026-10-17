@@ -1,7 +1,7 @@
 [package]
 name = "sapphire-journal"
 edition.workspace = true
-version = "0.13.0"
+version = "0.13.1"
 description.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -21,9 +21,9 @@ default = ["redb-store"]
 redb-store = ["sapphire-framework/redb-store"]
 
 [dependencies]
-sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.13.0", features = ["text-input"] }
+sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.13.1", features = ["text-input"] }
 sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "2.0.0" }
-sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.2.0" }
+sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.2.1" }
 sapphire-framework = { workspace = true, features = ["server", "ipc", "mcp"] }
 clap.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
