@@ -22,9 +22,6 @@ macro_rules! icon {
 pub fn arrow_left() -> egui::ImageSource<'static> {
     icon!("arrow-left")
 }
-pub fn book_open() -> egui::ImageSource<'static> {
-    icon!("book-open")
-}
 pub fn calendar() -> egui::ImageSource<'static> {
     icon!("calendar")
 }
@@ -34,17 +31,29 @@ pub fn chevron_down() -> egui::ImageSource<'static> {
 pub fn chevron_right() -> egui::ImageSource<'static> {
     icon!("chevron-right")
 }
+pub fn close() -> egui::ImageSource<'static> {
+    icon!("x")
+}
+pub fn ellipsis() -> egui::ImageSource<'static> {
+    icon!("ellipsis")
+}
 pub fn funnel() -> egui::ImageSource<'static> {
     icon!("funnel")
+}
+pub fn info() -> egui::ImageSource<'static> {
+    icon!("info")
+}
+pub fn kanban() -> egui::ImageSource<'static> {
+    icon!("square-kanban")
+}
+pub fn layout_list() -> egui::ImageSource<'static> {
+    icon!("layout-list")
 }
 pub fn list_view() -> egui::ImageSource<'static> {
     icon!("list")
 }
 pub fn tree_view() -> egui::ImageSource<'static> {
     icon!("folder-tree")
-}
-pub fn panel_right() -> egui::ImageSource<'static> {
-    icon!("panel-right")
 }
 pub fn plus() -> egui::ImageSource<'static> {
     icon!("plus")

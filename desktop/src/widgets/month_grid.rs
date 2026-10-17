@@ -1,7 +1,7 @@
 //! Reusable month-grid calendar widget.
 //!
-//! Used by the home screen's period filter (with the ISO week column and
-//! per-day entry-count dots) and by the date pickers in the entry editor
+//! Used by the period picker (with the ISO week column and per-day
+//! entry-count dots) and by the date pickers in the entry editor
 //! (week column hidden, no badges).
 
 use chrono::{Datelike, Duration, NaiveDate};
@@ -84,6 +84,8 @@ pub struct MonthGridResponse {
     pub week_clicked: Option<NaiveDate>,
     /// (year, month) of the clicked month header.
     pub month_clicked: Option<(i32, u32)>,
+    /// The clicked year header.
+    pub year_clicked: Option<i32>,
     /// True when the user clicked the "Today" shortcut.
     pub today_clicked: bool,
     /// True when the user clicked the "Clear" shortcut.
@@ -113,12 +115,19 @@ impl<'a> MonthGrid<'a> {
             {
                 *cursor = add_months(*cursor, -1);
             }
-            let label = format!("{} {}", month_name(cursor.month()), cursor.year());
+            let month = egui::RichText::new(month_name(cursor.month())).strong();
             let month_btn = ui
-                .add(egui::Button::new(egui::RichText::new(label).strong()).frame(false))
-                .on_hover_text("Filter by this month");
+                .add(egui::Button::new(month).frame(false))
+                .on_hover_text("This month");
             if month_btn.clicked() {
                 resp.month_clicked = Some((cursor.year(), cursor.month()));
+            }
+            let year = egui::RichText::new(cursor.year().to_string()).strong();
+            let year_btn = ui
+                .add(egui::Button::new(year).frame(false))
+                .on_hover_text("This year");
+            if year_btn.clicked() {
+                resp.year_clicked = Some(cursor.year());
             }
             if ui.small_button("▶").on_hover_text("Next month").clicked() {
                 *cursor = add_months(*cursor, 1);
@@ -132,11 +141,7 @@ impl<'a> MonthGrid<'a> {
                 {
                     resp.clear_clicked = true;
                 }
-                if ui
-                    .small_button("Today")
-                    .on_hover_text("Filter by today")
-                    .clicked()
-                {
+                if ui.small_button("Today").on_hover_text("Today").clicked() {
                     *cursor = today;
                     resp.today_clicked = true;
                 }
@@ -184,7 +189,7 @@ impl<'a> MonthGrid<'a> {
                             .frame(false)
                             .min_size(egui::vec2(cell_size, cell_size))
                             .selected(in_sel);
-                        if ui.add(btn).on_hover_text("Filter by this week").clicked() {
+                        if ui.add(btn).on_hover_text("This week").clicked() {
                             resp.week_clicked = Some(week_monday);
                         }
                     }
@@ -274,32 +279,7 @@ fn last_day_of_month(year: i32, month: u32) -> u32 {
     (first_next - Duration::days(1)).day()
 }
 
-/// First-and-last-day pair for the given month — convenient for callers
-/// constructing a [`Selection::Range`] from a `(year, month)` click.
-pub fn month_bounds(year: i32, month: u32) -> (NaiveDate, NaiveDate) {
-    let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
-    let last_day = last_day_of_month(year, month);
-    let last = NaiveDate::from_ymd_opt(year, month, last_day).unwrap();
-    (first, last)
-}
-
-/// ISO Monday → ISO Sunday range — convenient for callers responding to
-/// [`MonthGridResponse::week_clicked`].
-pub fn week_bounds(monday: NaiveDate) -> (NaiveDate, NaiveDate) {
-    (monday, monday + Duration::days(6))
-}
-
-/// `YYYY-MM-DD` → `YYYY-MM-DD` formatter used for period strings.
-pub fn format_period_range(start: NaiveDate, end: NaiveDate) -> String {
-    if start == end {
-        start.format("%Y-%m-%d").to_string()
-    } else {
-        format!("{}/{}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d"))
-    }
-}
-
-/// Reverse of [`format_period_range`] — derive the highlight range from
-/// a `Period` parsed from the home state. Returns `None` when the period
+/// The highlight range for a `Period` parsed from the period picker. Returns `None` when the period
 /// is `Period::None` or empty.
 pub fn selection_from_period(period: &sapphire_journal_core::period::Period) -> Selection {
     use sapphire_journal_core::period::Period;
