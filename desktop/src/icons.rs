@@ -22,9 +22,6 @@ macro_rules! icon {
 pub fn arrow_left() -> egui::ImageSource<'static> {
     icon!("arrow-left")
 }
-pub fn book_open() -> egui::ImageSource<'static> {
-    icon!("book-open")
-}
 pub fn calendar() -> egui::ImageSource<'static> {
     icon!("calendar")
 }
@@ -45,6 +42,12 @@ pub fn funnel() -> egui::ImageSource<'static> {
 }
 pub fn info() -> egui::ImageSource<'static> {
     icon!("info")
+}
+pub fn kanban() -> egui::ImageSource<'static> {
+    icon!("square-kanban")
+}
+pub fn layout_list() -> egui::ImageSource<'static> {
+    icon!("layout-list")
 }
 pub fn list_view() -> egui::ImageSource<'static> {
     icon!("list")

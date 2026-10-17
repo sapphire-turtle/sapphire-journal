@@ -21,17 +21,12 @@ use crate::settings::{MainView, PanePlacement, Settings};
 /// what the CLI, an agent or sync wrote.
 pub const REFRESH_EVERY: Duration = Duration::from_secs(10);
 
-/// The app's own screens, on the framework's rail.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Screen {
-    Journal,
-}
-
-/// The window: the framework's [`Shell`] around the journal. The rail opens
-/// the Journal screen, and Settings at its foot, which chooses the journal,
-/// manages sync and holds the journal's own settings page.
+/// The window: the framework's [`Shell`] around the journal. The rail
+/// switches between the journal's views (the list and the kanban), and opens
+/// Settings at its foot, which chooses the journal, manages sync and holds
+/// the journal's own settings page.
 pub struct Window {
-    shell: Shell<Screen>,
+    shell: Shell<MainView>,
     app: App,
 }
 
@@ -50,18 +45,17 @@ impl Window {
                 api.clone(),
             ))],
         );
-        let shell = Shell::new(
-            vec![Destination::new(
-                Screen::Journal,
-                icons::book_open(),
-                "Journal",
-            )],
+        let mut shell = Shell::new(
+            vec![
+                Destination::new(MainView::List, icons::layout_list(), "List"),
+                Destination::new(MainView::Kanban, icons::kanban(), "Kanban"),
+            ],
             settings,
         );
-        Self {
-            shell,
-            app: App::new(api, replies, journal_settings, data_dir),
-        }
+        let app = App::new(api, replies, journal_settings, data_dir);
+        // Open on the view last used.
+        shell.open(app.home.view);
+        Self { shell, app }
     }
 }
 
@@ -73,7 +67,7 @@ impl eframe::App for Window {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Re-read the list on its own now and then, and wake up for it even
         // if nothing else happens.
-        if self.shell.current() == Some(Screen::Journal)
+        if self.shell.current().is_some()
             && self
                 .app
                 .home
@@ -95,7 +89,7 @@ impl eframe::App for Window {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::CancelClose);
             home.unsaved = Some(Pending::Quit);
-            self.shell.open(Screen::Journal);
+            self.shell.open(home.view);
         }
         if std::mem::take(&mut home.quit) {
             home.allow_close = true;
@@ -103,9 +97,17 @@ impl eframe::App for Window {
         }
 
         let app = &mut self.app;
-        self.shell.ui(ui, |ui, screen| match screen {
-            Screen::Journal => screens::journal_home::show(app, ui),
+        self.shell.ui(ui, |ui, view| {
+            app.home.view = view;
+            screens::journal_home::show(app, ui);
         });
+        // Remember the view picked on the rail.
+        if self.app.settings.view != self.app.home.view {
+            self.app.settings.view = self.app.home.view;
+            if let Err(e) = self.app.settings.save() {
+                self.app.home.error_msg = Some(format!("Failed to save settings: {e}"));
+            }
+        }
         if std::mem::take(&mut self.app.open_settings) {
             self.shell.open_settings();
         }

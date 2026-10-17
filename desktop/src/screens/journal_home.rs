@@ -116,9 +116,9 @@ fn save_settings(app: &mut App) {
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
 
-/// The view's toolbar: the journal menu, the period, search, and which view.
+/// The view's toolbar: the journal menu, the period and search. Which view
+/// is shown is picked on the rail.
 fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
-    let mut view = app.home.view;
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         draw_journal_menu(app, ui);
@@ -147,10 +147,7 @@ fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
             if icon_btn(ui, icons::refresh(), "Refresh entry list").clicked() {
                 home.reload();
             }
-            ui.separator();
-            ui.selectable_value(&mut view, MainView::Kanban, "Kanban");
-            ui.selectable_value(&mut view, MainView::List, "List");
-            if view == MainView::List {
+            if home.view == MainView::List {
                 // Show the icon for the *other* layout (what clicking would switch to).
                 let (icon, tooltip) = match home.list_layout {
                     ListLayout::Tree => (icons::list_view(), "Show as a flat list"),
@@ -198,12 +195,6 @@ fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
         });
     }
     ui.add_space(4.0);
-
-    if view != app.home.view {
-        app.home.view = view;
-        app.settings.view = view;
-        save_settings(app);
-    }
 }
 
 /// How many entries fall on `date`, for the period picker's dots. Mirrors
