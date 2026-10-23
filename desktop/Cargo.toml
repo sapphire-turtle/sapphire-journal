@@ -18,7 +18,7 @@ sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.
 # `eframe`: `gui::app::run` starts the window, and `gui::{eframe, egui}` are the
 # versions it renders with.
 sapphire-framework = { workspace = true, features = ["eframe", "ipc"] }
-egui_extras = { version = "0.36", features = ["svg"] }
+egui_extras = { version = "0.37", features = ["svg"] }
 grain-id = { version = "0.15" }
 serde = { workspace = true }
 toml = { workspace = true }
