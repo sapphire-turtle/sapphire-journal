@@ -10,8 +10,8 @@
 //!   picks the bridge up once it starts, or again after it restarts.
 //! - **the journal's methods** (`sapphire-journal.*`), which its MCP tools
 //!   call: the framework serves those tools on stdio (`sapphire-journal mcp`)
-//!   and, when `server.toml` turns it on, at `/mcp` on the server's HTTP
-//!   listener.
+//!   and, when `[http.mcp] enabled` in `config.toml` turns it on, at `/mcp`
+//!   on the server's HTTP listener.
 //! - **the periodic re-scan** of the entry cache, at the user config's
 //!   `sync_interval_minutes`, so entries synced in from other devices show up
 //!   in `entry_list` without a write here first.
@@ -24,30 +24,33 @@
 use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use sapphire_framework::backend::WorkspaceBackend as _;
+use sapphire_framework::ipc::ManagedBy;
 use sapphire_framework::server::{
-    AppServer, SERVER_CONFIG_FILE, ServerConfig, StatusRow, WorkspaceHost,
+    AppFiles, AppServer, AppSettings, BridgeConnector, FieldError, HttpConfig, SERVER_CONFIG_FILE,
+    ServerConfig, SettingDef, Settings, Staged, StatusRow, SyncRuntime, WorkspaceHost,
+    serve_restarting,
 };
 use sapphire_journal_core::{JOURNAL_CTX, JournalState, user_config::UserConfig};
+use serde::Deserialize as _;
 
 /// This binary's version, reported in every handshake.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Where the HTTP listener binds unless `server.toml`'s `[http] listen` says
+/// Where the HTTP listener binds unless `config.toml`'s `[http] listen` says
 /// otherwise: loopback, on the port `sapphire-journal-server` used.
 pub const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3172";
 
 /// The server the framework's one-shot verbs dispatch against: the journal's
 /// MCP tools and API version, nothing mounted.
 ///
-/// `status`, `service`, `workspace`, `workgroup`, `device`, `embedding` and
-/// `external-device` read only the app name and the service spec from it and
-/// talk to a *running* server (or the bridge) over IPC themselves; `mcp`
-/// serves the journal's tools on stdio, dialling that server. Opening a
-/// bridge here would make `status` on a host without one fail with a bridge
+/// `service` and `update` read only the service spec and the release source
+/// from it; the other verbs talk to a *running* server over IPC themselves.
+/// `mcp` serves the journal's tools on stdio, dialling that server. Opening a
+/// bridge here would make `mcp` on a host without one fail with a bridge
 /// error instead of the framework's "no server is running".
 pub fn build_oneshot() -> AppServer {
     AppServer::new(&JOURNAL_CTX, VERSION)
@@ -82,6 +85,44 @@ fn default_http_addr() -> SocketAddr {
     DEFAULT_HTTP_ADDR
         .parse()
         .expect("the default address parses")
+}
+
+/// The journal as an owner of the app server's settings: no keys of its own,
+/// and one check of the framework's `[http]` table, [`check_exposure`]. The
+/// framework runs it when the server starts, so a refused configuration
+/// stops the start, and `sapphire-journal config list` warns about it.
+#[derive(Clone)]
+pub struct JournalOwner;
+
+impl AppSettings for JournalOwner {
+    fn defs(&self) -> Vec<SettingDef> {
+        Vec::new()
+    }
+
+    fn validate(&self, files: &AppFiles, staged: &Staged) -> Result<(), Vec<FieldError>> {
+        // A file that does not read, or an `[http]` the framework does not
+        // take, is the framework's to report.
+        let Ok(Some(text)) = staged.read(files.device()) else {
+            return Ok(());
+        };
+        let Ok(table) = text.parse::<toml::Table>() else {
+            return Ok(());
+        };
+        let Some(Ok(http)) = table.get("http").cloned().map(HttpConfig::deserialize) else {
+            return Ok(());
+        };
+        if !http.mcp.enabled {
+            return Ok(());
+        }
+        let addr = http.listen.unwrap_or_else(default_http_addr);
+        check_exposure(addr, &http.allowed_hosts).map_err(|err| {
+            vec![FieldError {
+                key: Some("http.allowed_hosts".to_owned()),
+                file: Some(files.device().to_path_buf()),
+                message: err.to_string(),
+            }]
+        })
+    }
 }
 
 /// Refuse a configuration that would serve 403 to every `/mcp` client.
@@ -168,16 +209,20 @@ impl CurrentJournal {
 /// Re-scan the current journal's entry cache, and re-index it for search,
 /// every `interval`.
 ///
-/// A pass with no workspace selected, or one that is not a journal, does
+/// `journal` is the running server's, when one runs. A pass with no server
+/// running, no workspace selected, or one that is not a journal, does
 /// nothing; a failed pass is logged and the next one tries again.
 pub fn spawn_rescan(
-    journal: Arc<CurrentJournal>,
+    journal: Arc<Mutex<Weak<CurrentJournal>>>,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         loop {
             ticker.tick().await;
+            let Some(journal) = journal.lock().unwrap_or_else(|e| e.into_inner()).upgrade() else {
+                continue;
+            };
             let current = Arc::clone(&journal);
             let pass = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
                 let Ok(state) = current.get() else {
@@ -205,41 +250,65 @@ pub fn spawn_rescan(
     })
 }
 
-/// Run the server until SIGTERM or SIGINT.
+/// Run the server until SIGTERM or SIGINT, in place again on
+/// `server.restart`.
 pub async fn run() -> anyhow::Result<()> {
-    // The framework reads `server.toml` again when it starts; this read is
-    // for what the journal adds on top: the exposure check and the status row.
-    let config = ServerConfig::load_for_app(&JOURNAL_CTX)?;
-    let http_addr = config.http.listen.unwrap_or_else(default_http_addr);
-    if config.mcp.http {
-        check_exposure(http_addr, &config.http.allowed_hosts)?;
+    // Resolved once, up front: a server's `build` cannot fail.
+    let exe = std::env::current_exe()?;
+    // The re-scan outlives the rounds: each round's server points it at its
+    // journal. Weak, so a stopped server's workspace is not held open.
+    let current = Arc::new(Mutex::new(Weak::new()));
+    let rescan = UserConfig::load()?
+        .sync_interval()
+        .map(|interval| spawn_rescan(Arc::clone(&current), interval));
+    let result = serve_restarting(&JOURNAL_CTX, JournalOwner, |settings: &Settings| {
+        build_serving(settings, &exe, &current)
+    })
+    .await;
+    if let Some(rescan) = rescan {
+        rescan.abort();
     }
+    Ok(result?)
+}
+
+/// One round of [`run`]: [`build`], with sync and the status row, as
+/// `settings` say.
+fn build_serving(
+    settings: &Settings,
+    exe: &std::path::Path,
+    current: &Mutex<Weak<CurrentJournal>>,
+) -> AppServer {
+    // The framework checked the settings before handing them over, so they
+    // read; the defaults are only a fallback.
+    let config = ServerConfig::from_settings(settings).unwrap_or_else(|err| {
+        tracing::warn!("reading the server's settings failed: {err}");
+        ServerConfig::default()
+    });
 
     // Sync through the host's bridge. The framework connects, and connects
     // again whenever the bridge restarts; a bridge that is not running yet
     // stops nothing but sync. Any other failure — a bridge of another
     // version, say — stops the start, in `run`.
     let (server, journal) = build();
-    let server = server.sync_via_bridge()?;
+    *current.lock().unwrap_or_else(|e| e.into_inner()) = Arc::downgrade(&journal);
+    let runtime = SyncRuntime::connecting(
+        &JOURNAL_CTX,
+        BridgeConnector::standard(JOURNAL_CTX.app_name, VERSION),
+        exe.to_path_buf(),
+        ManagedBy::Service,
+    );
+    let server = server.sync(Arc::new(runtime));
 
-    let mcp_row = if config.mcp.http {
+    let mcp_row = if config.http.mcp.enabled {
+        let http_addr = config.http.listen.unwrap_or_else(default_http_addr);
         format!("http://{http_addr}/mcp")
     } else {
         "off".to_owned()
     };
-    let server = server.status_rows(Arc::new(move || {
+    server.status_rows(Arc::new(move || {
         vec![StatusRow {
             name: "mcp".to_owned(),
             value: mcp_row.clone(),
         }]
-    }));
-
-    let rescan = UserConfig::load()?
-        .sync_interval()
-        .map(|interval| spawn_rescan(journal, interval));
-    let result = server.run().await;
-    if let Some(rescan) = rescan {
-        rescan.abort();
-    }
-    Ok(result?)
+    }))
 }

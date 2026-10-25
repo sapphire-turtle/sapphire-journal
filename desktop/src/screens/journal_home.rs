@@ -76,7 +76,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let title = entry_pane::title(&app.home);
         egui::Window::new(title)
-            .id(egui::Id::new("entry_pane_window"))
+            .id(egui::Id::unique("entry_pane_window"))
             .title_bar(false)
             .resizable(true)
             .default_size([420.0, 560.0])
@@ -349,7 +349,7 @@ fn draw_tree(
                         egui::Sense::hover(),
                     );
                 }
-                let dnd_id = egui::Id::new(("entry_dnd", id));
+                let dnd_id = egui::Id::unique(("entry_dnd", id));
                 // Inlined `dnd_drag_source` using `Sense::click_and_drag()` so
                 // a press-and-release without movement registers as a click
                 // (for selection) while a press-and-drag still starts a drag.
@@ -603,7 +603,7 @@ fn draw_confirm_unsaved(home: &mut HomeState, ctx: &egui::Context) {
     let mut discard = false;
     let mut cancel = false;
 
-    let modal = egui::Modal::new(egui::Id::new("unsaved_changes")).show(ctx, |ui| {
+    let modal = egui::Modal::new(egui::Id::unique("unsaved_changes")).show(ctx, |ui| {
         ui.set_width(360.0);
         ui.heading("Unsaved changes");
         ui.add_space(4.0);

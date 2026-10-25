@@ -120,7 +120,7 @@ fn draw_card(
 ) -> egui::Response {
     let path = PathBuf::from(&header.path);
     let is_active = home.selected_path.as_ref() == Some(&path);
-    let dnd_id = egui::Id::new(("kanban_card", header.id()));
+    let dnd_id = egui::Id::unique(("kanban_card", header.id()));
 
     // As the tree's rows do: a press-and-release is a click, a press-and-
     // drag a drag (the stock `dnd_drag_source` would swallow the click).

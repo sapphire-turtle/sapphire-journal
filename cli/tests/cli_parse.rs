@@ -2,7 +2,8 @@
 //! flat at the top level (#300).
 
 use clap::Parser as _;
-use sapphire_journal::cli::{Cli, Command, FrameworkCommand};
+use sapphire_journal::cli::{Cli, Command, FrameworkCommand, FrameworkVerbs};
+use sapphire_journal::commands::config::ConfigCommand;
 
 fn parse(args: &[&str]) -> Cli {
     Cli::try_parse_from(std::iter::once("sapphire-journal").chain(args.iter().copied()))
@@ -22,7 +23,7 @@ fn a_bare_invocation_prints_the_help() {
     );
     assert!(matches!(
         parse(&["serve"]).command,
-        Command::Framework(FrameworkCommand::Serve)
+        Command::Framework(FrameworkVerbs(FrameworkCommand::Serve))
     ));
 }
 
@@ -37,6 +38,7 @@ fn the_framework_verbs_sit_at_the_top_level() {
         &["device", "list"],
         &["embedding", "show"],
         &["external-device", "list"],
+        &["update", "--check"],
         &["mcp"],
     ] {
         assert!(
@@ -58,8 +60,30 @@ fn the_journal_verbs_still_parse_beside_them() {
     ));
     assert!(matches!(
         parse(&["config", "show"]).command,
-        Command::Config { .. }
+        Command::Config {
+            action: ConfigCommand::Show
+        }
     ));
+}
+
+#[test]
+fn config_holds_the_journal_show_and_the_framework_settings() {
+    for args in [
+        &["config", "list"][..],
+        &["config", "get", "http.mcp.enabled"],
+        &["config", "set", "http.mcp.enabled=true"],
+        &["config", "unset", "http.mcp"],
+    ] {
+        assert!(
+            matches!(
+                parse(args).command,
+                Command::Config {
+                    action: ConfigCommand::Settings(_)
+                }
+            ),
+            "{args:?} should be the framework's settings verb"
+        );
+    }
 }
 
 #[test]

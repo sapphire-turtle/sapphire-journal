@@ -2,7 +2,7 @@
 name = "sapphire-journal-api"
 # The major is the journal's API version (`API_VERSION`); it moves only when the
 # methods or their types break, not with the journal's version.
-version = "2.0.0"
+version = "3.0.0"
 edition.workspace = true
 description = "The methods a sapphire-journal app server serves, and their types"
 license.workspace = true
@@ -13,7 +13,8 @@ categories = ["network-programming"]
 [dependencies]
 # The framework's methods every app server serves (`workspace.*`, `sync.*`),
 # re-exported as `server`: a client finds all it can ask the journal's server here.
-sapphire-server-api = { package = "sapphire-framework-server-api", version = "4.2" }
+# Re-exported, so its major moves this crate's (and so `API_VERSION`) with it.
+sapphire-server-api = { package = "sapphire-framework-server-api", version = "5.0" }
 chrono.workspace = true
 grain-id = { version = "0.15", features = ["serde", "schemars"] }
 indexmap.workspace = true

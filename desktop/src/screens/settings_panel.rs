@@ -163,7 +163,7 @@ impl JournalSettingsPage {
 }
 
 impl SettingsSection for JournalSettingsPage {
-    fn label(&self) -> String {
+    fn label(&self, _ctx: &egui::Context) -> String {
         "Journal".to_string()
     }
 
@@ -224,7 +224,7 @@ impl SettingsSection for JournalSettingsPage {
         ui.weak(
             "AI agents reach the journal through the sapphire-journal server: \
              `sapphire-journal mcp` on stdio, or http://127.0.0.1:3172/mcp once \
-             `[mcp] http = true` is set in the server's server.toml.",
+             `[http.mcp] enabled = true` is set in the server's config.toml.",
         );
 
         if let Some(msg) = state.error_msg.clone() {
