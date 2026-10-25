@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/sapphire-turtle/sapphire-journal/compare/desktop-v0.2.0...desktop-v0.3.0) - 2026-10-25
+
+### Added
+
+- *(desktop)* remember the list's tree or flat layout
+- *(desktop)* pick the list or the kanban on the rail
+- let cargo binstall install the release binaries
+- *(desktop)* list and kanban views with a shared entry pane
+- *(desktop)* lay the window out with the framework's Shell
+
+### Fixed
+
+- *(desktop)* point to Settings and the status bar, not the Sync tab
+- *(desktop)* use Metal on macOS instead of forcing Vulkan
+
+### Other
+
+- [**breaking**] follow sapphire-framework 0.22
+- Merge pull request #332 from sapphire-turtle/feat/binstall
+- *(desktop)* start through sapphire-framework's gui::app::run
+
 ### Changed
 
 - sapphire-framework 0.22 and egui 0.37

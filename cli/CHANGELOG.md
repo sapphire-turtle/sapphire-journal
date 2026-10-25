@@ -4,6 +4,16 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.13.0...v0.14.0) - 2026-10-25
+
+### Added
+
+- let cargo binstall install the release binaries
+
+### Other
+
+- [**breaking**] follow sapphire-framework 0.22
+
 ### Changed
 
 - [**breaking**] follow sapphire-framework 0.22: the server's settings move from `server.toml` to `config.toml` (migrated on the first start), `[mcp] http` is now `[http.mcp] enabled`, `config list|get|set|unset` manage them, and `serve` restarts in place on `server.restart`
