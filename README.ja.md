@@ -4,6 +4,8 @@
 
 sapphire-framework上に構築された、タスク・イベント・ノート管理アプリ。ファイルベース・ローカルファースト・人間とAIエージェントの協働のために作られました。
 
+> **任意のMCPクライアントから使えます。** AIとの連携は汎用的なMCPサーバーとして実装しているため、名前が同じ[sapphire-agent](https://github.com/sapphire-turtle/sapphire-agent)専用ではありません。MCPクライアント機能を持つAIハーネス（Claude Code、Claude Desktopなど）であれば何でも連携できます。
+
 ## コンセプト
 
 - **Markdownをソース・オブ・トゥルースに** — すべてのデータはプレーンな`.md`ファイルに保存され、どんなツールでも読み書きできます

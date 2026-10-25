@@ -4,6 +4,8 @@
 
 A task, event and note management app built on [sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework) — file-based, local-first, made for human-agent collaboration.
 
+> **Works with any MCP client.** AI integration is a standard MCP server, so sapphire-journal is not tied to [sapphire-agent](https://github.com/sapphire-turtle/sapphire-agent) despite the shared name — any AI harness that can act as an MCP client (Claude Code, Claude Desktop, …) can use it.
+
 ## Concept
 
 - **Markdown as source of truth** — all data lives in plain `.md` files you can read and edit with any tool
