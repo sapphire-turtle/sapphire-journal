@@ -22,6 +22,9 @@ yanked = "warn"
 # still load-bearing. Re-check them when the dependency they name moves.
 ignore = [
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained (author announced no further fixes) but pulled in transitively via egui/epaint_default_fonts; no drop-in replacement yet." },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained as a standalone crate (merged into zbus 6). Reached via eframe > egui-winit > accesskit_winit > accesskit_unix (Linux screen reader support), whose latest release still pins zbus ^5.19 and atspi ^0.29. Drop when accesskit_unix moves to zbus 6." },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained as a standalone crate (merged into zbus 6). Same path and reason as RUSTSEC-2026-0370." },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained as a standalone crate (merged into zbus 6). Same path and reason as RUSTSEC-2026-0370." },
 ]
 
 [licenses]

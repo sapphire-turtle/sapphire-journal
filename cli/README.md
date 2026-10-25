@@ -245,8 +245,9 @@ app server, so it must be running (`sapphire-journal serve`, or the OS service).
 
 - **stdio**: register `sapphire-journal mcp` with the agent. It talks to the running
   server and never starts one.
-- **HTTP**: set `[mcp] http = true` in the server's `server.toml` (in the app's config
-  directory); the server then answers at `http://127.0.0.1:3172/mcp` (`[http] listen`
+- **HTTP**: `sapphire-journal config set http.mcp.enabled=true --restart` (or
+  `[http.mcp] enabled = true` in the server's `config.toml`, in the app's config
+  directory); the server then answers at `http://127.0.0.1:3172/mcp` (`http.listen`
   changes the address). Every request needs an external device's token:
   `sapphire-journal external-device add <name>`.
 

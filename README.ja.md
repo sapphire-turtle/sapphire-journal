@@ -117,7 +117,7 @@ sapphire-journal workspace init ~/journal
 sapphire-journal entry new --title "Hello"
 ```
 
-AIエージェントは`sapphire-journal mcp`（stdio）で接続します。サーバーの`server.toml`に`[mcp] http = true`を設定すれば、HTTPの`http://127.0.0.1:3172/mcp`でも接続できます。意味検索にはホストの`sapphire-bridge`が動かす埋め込みモデルを使います（`sapphire-journal embedding show`）。モデルがなければ全文検索になります。
+AIエージェントは`sapphire-journal mcp`（stdio）で接続します。`sapphire-journal config set http.mcp.enabled=true --restart`で有効にすれば（サーバーの`config.toml`の`[http.mcp] enabled = true`）、HTTPの`http://127.0.0.1:3172/mcp`でも接続できます。意味検索にはホストの`sapphire-bridge`が動かす埋め込みモデルを使います（`sapphire-journal embedding show`）。モデルがなければ全文検索になります。
 
 ## プロジェクト構成
 

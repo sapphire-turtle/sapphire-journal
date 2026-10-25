@@ -57,7 +57,7 @@ Earlier versions kept a registry of journals (`journals.toml`) and their files u
 
 ## MCP
 
-AI agents reach the journal through the server, not the desktop app: `sapphire-journal mcp` on stdio, or `http://127.0.0.1:3172/mcp` once `[mcp] http = true` is set in the server's `server.toml`.
+AI agents reach the journal through the server, not the desktop app: `sapphire-journal mcp` on stdio, or `http://127.0.0.1:3172/mcp` once `[http.mcp] enabled = true` is set in the server's `config.toml` (`sapphire-journal config set http.mcp.enabled=true --restart`).
 
 ## License
 
