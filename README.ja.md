@@ -1,3 +1,5 @@
+<img src="docs/icon.svg" alt="" width="72" height="72">
+
 # sapphire-journal（日本語）
 
 > 言語: [English](README.md) | **日本語**
