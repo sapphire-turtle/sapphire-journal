@@ -2,8 +2,9 @@
 //! menu.
 //!
 //! Every view opens entries in this one pane, so editing looks the same
-//! from the list as from the kanban; `journal_home` decides where it sits
-//! (a column at the right, or a window floating over the view).
+//! from the list as from the kanban. It is drawn in the shell's side pane,
+//! which decides where it sits: a column at the right, a card over the view,
+//! or the view's place on a phone.
 
 use sapphire_framework::gui::egui;
 
@@ -11,33 +12,25 @@ use sapphire_journal_core::{entry::Entry, entry::EntryHeader, labels::EntryFlag}
 
 use crate::app::{EditorState, HomeState};
 use crate::icons;
-use crate::settings::PanePlacement;
 use crate::widgets::buttons::{icon_btn, icon_text_btn};
 use crate::widgets::date_picker::date_picker_button;
 
-/// What the pane asks of the screen around it.
-pub enum PaneAction {
-    /// Dock it at the right, or float it over the view.
-    Place(PanePlacement),
-}
-
 /// Draw the pane for the open entry into `ui`.
-pub fn show(home: &mut HomeState, ui: &mut egui::Ui) -> Option<PaneAction> {
-    let mut action = None;
-    draw_header(home, ui, &mut action);
+pub fn show(home: &mut HomeState, ui: &mut egui::Ui) {
+    ui.add_space(4.0);
+    draw_header(home, ui);
     ui.separator();
     if home.editor.is_none() {
         ui.vertical_centered(|ui| {
             ui.add_space(40.0);
             ui.spinner();
         });
-        return action;
+        return;
     }
     draw_form(home, ui);
-    action
 }
 
-/// The pane's title, for the floating window's frame.
+/// The open entry's title, for the unsaved-changes question.
 pub fn title(home: &HomeState) -> String {
     match &home.editor {
         Some(editor) if !editor.title.trim().is_empty() => editor.title.clone(),
@@ -48,7 +41,7 @@ pub fn title(home: &HomeState) -> String {
 
 // ── Header ───────────────────────────────────────────────────────────────────
 
-fn draw_header(home: &mut HomeState, ui: &mut egui::Ui, action: &mut Option<PaneAction>) {
+fn draw_header(home: &mut HomeState, ui: &mut egui::Ui) {
     let dirty = home.is_dirty();
     let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
     let mut save = home.editor.is_some() && ui.input_mut(|i| i.consume_shortcut(&save_shortcut));
@@ -76,7 +69,6 @@ fn draw_header(home: &mut HomeState, ui: &mut egui::Ui, action: &mut Option<Pane
                 return;
             }
             draw_menu(
-                home,
                 ui,
                 dirty,
                 MenuPicks {
@@ -85,7 +77,6 @@ fn draw_header(home: &mut HomeState, ui: &mut egui::Ui, action: &mut Option<Pane
                     add_child: &mut add_child,
                     delete: &mut delete,
                     close: &mut close,
-                    action,
                 },
             );
             draw_info_button(home, ui);
@@ -127,11 +118,10 @@ struct MenuPicks<'a> {
     add_child: &'a mut bool,
     delete: &'a mut bool,
     close: &'a mut bool,
-    action: &'a mut Option<PaneAction>,
 }
 
 /// The ⋯ menu: what can be done to the open entry.
-fn draw_menu(home: &HomeState, ui: &mut egui::Ui, dirty: bool, picks: MenuPicks<'_>) {
+fn draw_menu(ui: &mut egui::Ui, dirty: bool, picks: MenuPicks<'_>) {
     let tint = ui.visuals().text_color();
     let img = egui::Image::new(icons::ellipsis())
         .fit_to_exact_size(egui::vec2(16.0, 16.0))
@@ -150,14 +140,6 @@ fn draw_menu(home: &HomeState, ui: &mut egui::Ui, dirty: bool, picks: MenuPicks<
         ui.separator();
         if ui.button("Add child entry").clicked() {
             *picks.add_child = true;
-        }
-        ui.separator();
-        let (label, placement) = match home.pane_placement {
-            PanePlacement::Side => ("Float over the view", PanePlacement::Floating),
-            PanePlacement::Floating => ("Dock at the right", PanePlacement::Side),
-        };
-        if ui.button(label).clicked() {
-            *picks.action = Some(PaneAction::Place(placement));
         }
         ui.separator();
         if icon_text_btn(ui, icons::trash(), "Delete entry…").clicked() {

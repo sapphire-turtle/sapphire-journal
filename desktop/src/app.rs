@@ -8,14 +8,16 @@ use std::time::{Duration, Instant};
 use chrono::NaiveDate;
 use grain_id::GrainId;
 use sapphire_framework::gui::client::FrameworkClient;
-use sapphire_framework::gui::{Destination, Settings as FrameworkSettings, Shell, eframe, egui};
+use sapphire_framework::gui::{
+    Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
+};
 use sapphire_journal_core::entry::{Entry, EntryHeader};
 
 use crate::api::{Api, Change, Reply};
 use crate::icons;
 use crate::screens;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
-use crate::settings::{ListLayout, MainView, PanePlacement, Settings};
+use crate::settings::{ListLayout, MainView, Settings};
 
 /// How often the journal tab re-reads the entry list on its own, to pick up
 /// what the CLI, an agent or sync wrote.
@@ -24,7 +26,8 @@ pub const REFRESH_EVERY: Duration = Duration::from_secs(10);
 /// The window: the framework's [`Shell`] around the journal. The rail
 /// switches between the journal's views (the list and the kanban), and opens
 /// Settings at its foot, which chooses the journal, manages sync and holds
-/// the journal's own settings page.
+/// the journal's own settings page. The open entry is edited in the shell's
+/// side pane, beside whichever view is open.
 pub struct Window {
     shell: Shell<MainView>,
     app: App,
@@ -96,11 +99,13 @@ impl eframe::App for Window {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        let app = &mut self.app;
-        self.shell.ui(ui, |ui, view| {
-            app.home.view = view;
-            screens::journal_home::show(app, ui);
-        });
+        self.shell.show(ui, &mut self.app);
+        // The questions about the open entry, over whatever is shown: the
+        // pane asks them from Settings too.
+        screens::journal_home::show_dialogs(&mut self.app.home, ui.ctx());
+        if self.app.home.pane_request.is_some() {
+            ui.ctx().request_repaint();
+        }
         // Remember the view picked on the rail, and the list's layout.
         let (settings, home) = (&mut self.app.settings, &mut self.app.home);
         if settings.view != home.view || settings.list_layout != home.list_layout {
@@ -113,6 +118,26 @@ impl eframe::App for Window {
         if std::mem::take(&mut self.app.open_settings) {
             self.shell.open_settings();
         }
+    }
+}
+
+impl ShellApp<MainView> for App {
+    fn screen_ui(&mut self, ui: &mut egui::Ui, view: MainView, side: &mut Side) {
+        self.home.view = view;
+        self.home.apply_pane_request(side);
+        screens::journal_home::show(self, ui);
+        self.home.apply_pane_request(side);
+    }
+
+    fn side_ui(&mut self, ui: &mut egui::Ui, _: Option<MainView>, side: &mut Side) {
+        self.home.apply_pane_request(side);
+        if self.home.selected_path.is_some() {
+            screens::entry_pane::show(&mut self.home, ui);
+        } else {
+            ui.add_space(8.0);
+            ui.weak("No entry open.");
+        }
+        self.home.apply_pane_request(side);
     }
 }
 
@@ -129,8 +154,8 @@ pub struct App {
     replies: mpsc::Receiver<Reply>,
 }
 
-/// State for the journal screen: a view of the entries, and the pane the
-/// open entry is edited in.
+/// State for the journal screen: a view of the entries, and the side pane
+/// the open entry is edited in.
 pub struct HomeState {
     pub api: Api,
 
@@ -145,7 +170,7 @@ pub struct HomeState {
     pub listing: bool,
     pub last_listed: Option<Instant>,
 
-    /// The entry open in the pane, if any.
+    /// The entry open in the side pane, if any.
     pub selected_path: Option<PathBuf>,
     /// The open entry's form; `None` while it loads.
     pub editor: Option<EditorState>,
@@ -160,10 +185,9 @@ pub struct HomeState {
     /// Whether the sort / order pickers are visible. Toggled by the funnel
     /// icon in the toolbar.  Search input stays visible.
     pub show_filters: bool,
-    /// Docked at the right or floating.
-    pub pane_placement: PanePlacement,
-    /// Width of the docked pane, as last saved.
-    pub pane_width: f32,
+    /// What the side pane is to do once the shell next asks: show the entry
+    /// just opened, or go back to the view once it is closed.
+    pub pane_request: Option<PaneRequest>,
 
     // ── Filter / sort state ─────────────────────────────────────────────────
     pub filter_text: String,
@@ -198,6 +222,15 @@ pub struct HomeState {
     pub sync_in_progress: bool,
 }
 
+/// What the side pane is asked to do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaneRequest {
+    /// Show the open entry: on the card, or on a phone in the view's place.
+    Open,
+    /// Back to the view alone.
+    Close,
+}
+
 /// Something that would throw away the open entry's unsaved changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pending {
@@ -226,8 +259,7 @@ impl HomeState {
             list_layout: settings.list_layout,
             collapsed: HashSet::new(),
             show_filters: false,
-            pane_placement: settings.pane.placement,
-            pane_width: settings.pane.width,
+            pane_request: None,
             filter_text: String::new(),
             period: String::new(),
             calendar_cursor: chrono::Local::now().date_naive(),
@@ -252,6 +284,15 @@ impl HomeState {
             .find(|h| Path::new(&h.path) == path.as_path())
     }
 
+    /// Do what was asked of the side pane since the shell last asked.
+    pub fn apply_pane_request(&mut self, side: &mut Side) {
+        match self.pane_request.take() {
+            Some(PaneRequest::Open) => side.open(),
+            Some(PaneRequest::Close) => side.close(),
+            None => {}
+        }
+    }
+
     /// Ask the server for the entry list, unless a request is already out.
     pub fn reload(&mut self) {
         if self.listing {
@@ -268,8 +309,11 @@ impl HomeState {
     }
 
     /// Open `path` in the pane, asking first if that would drop changes.
+    /// The entry already open is shown again, as it is.
     pub fn open(&mut self, path: PathBuf) {
-        if self.selected_path.as_ref() != Some(&path) {
+        if self.selected_path.as_ref() == Some(&path) {
+            self.pane_request = Some(PaneRequest::Open);
+        } else {
             self.guard(Pending::Open(path));
         }
     }
@@ -296,11 +340,15 @@ impl HomeState {
     /// the way.
     pub fn perform(&mut self, pending: Pending) {
         match pending {
-            Pending::Open(path) => self.select(path),
+            Pending::Open(path) => {
+                self.select(path);
+                self.pane_request = Some(PaneRequest::Open);
+            }
             Pending::Close => {
                 self.selected_path = None;
                 self.editor = None;
                 self.info_msg = None;
+                self.pane_request = Some(PaneRequest::Close);
             }
             Pending::New(parent) => self.api.prepare(parent),
             Pending::Quit => self.quit = true,
@@ -317,7 +365,7 @@ impl HomeState {
     }
 }
 
-/// Form fields for the entry currently being edited in the main panel.
+/// Form fields for the entry currently being edited in the side pane.
 ///
 /// The path of the entry being edited lives in `HomeState::selected_path` so
 /// that selection-aware UI (e.g. the views' active-row highlight) and the
@@ -391,6 +439,7 @@ impl App {
                 Reply::Prepared(result) => match result {
                     Ok(path) => {
                         home.select(path);
+                        home.pane_request = Some(PaneRequest::Open);
                         home.reload();
                     }
                     Err(e) => home.error_msg = Some(e),
@@ -476,5 +525,63 @@ impl App {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use sapphire_framework::ipc::Endpoint;
+    use sapphire_journal_mcp::JournalClient;
+
+    use super::*;
+
+    /// A journal screen whose server is never there: what it asks for fails
+    /// in the background, and only its own state is looked at.
+    fn home() -> (HomeState, tokio::runtime::Runtime) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let endpoint = Endpoint::in_dir("sapphire-journal-test", std::env::temp_dir());
+        let client = JournalClient::new("sapphire-journal", "desktop", "0", endpoint);
+        let (api, _replies) = Api::new(runtime.handle().clone(), client, Arc::new(|| {}));
+        (HomeState::new(api, &Settings::default()), runtime)
+    }
+
+    #[test]
+    fn opening_an_entry_shows_the_side_pane() {
+        let (mut home, _rt) = home();
+        home.open(PathBuf::from("a.md"));
+        assert_eq!(home.selected_path, Some(PathBuf::from("a.md")));
+        assert_eq!(home.pane_request, Some(PaneRequest::Open));
+    }
+
+    #[test]
+    fn opening_the_open_entry_again_shows_the_side_pane_again() {
+        let (mut home, _rt) = home();
+        home.open(PathBuf::from("a.md"));
+        home.pane_request = None;
+        home.open(PathBuf::from("a.md"));
+        assert_eq!(home.pane_request, Some(PaneRequest::Open));
+    }
+
+    #[test]
+    fn closing_the_entry_closes_the_side_pane() {
+        let (mut home, _rt) = home();
+        home.open(PathBuf::from("a.md"));
+        home.close_entry();
+        assert_eq!(home.selected_path, None);
+        assert_eq!(home.pane_request, Some(PaneRequest::Close));
+    }
+
+    #[test]
+    fn a_kanban_status_change_leaves_the_side_pane_as_it_is() {
+        let (mut home, _rt) = home();
+        home.open(PathBuf::from("a.md"));
+        home.pane_request = None;
+        // What a reply for the open entry does when it moved column.
+        home.select(PathBuf::from("a.md"));
+        assert_eq!(home.pane_request, None);
     }
 }

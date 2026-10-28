@@ -18,9 +18,6 @@ pub struct Settings {
     /// How the list view lays out the entries.
     #[serde(default)]
     pub list_layout: ListLayout,
-    /// Where an opened entry is shown.
-    #[serde(default)]
-    pub pane: PaneSettings,
     /// Where [`save`](Self::save) writes: the file [`load`](Self::load) read.
     #[serde(skip)]
     path: PathBuf,
@@ -46,41 +43,6 @@ pub enum ListLayout {
     Tree,
     /// Flat list, ignoring hierarchy.
     Flat,
-}
-
-/// Persisted state of the entry pane.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaneSettings {
-    #[serde(default)]
-    pub placement: PanePlacement,
-    /// Width of the pane docked at the right.
-    #[serde(default = "default_pane_width")]
-    pub width: f32,
-}
-
-impl Default for PaneSettings {
-    fn default() -> Self {
-        Self {
-            placement: PanePlacement::default(),
-            width: default_pane_width(),
-        }
-    }
-}
-
-fn default_pane_width() -> f32 {
-    380.0
-}
-
-/// Where the entry pane sits. Which one the app keeps is still open, so
-/// both can be tried.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PanePlacement {
-    /// A narrow column at the right of the view.
-    #[default]
-    Side,
-    /// A window floating over the view.
-    Floating,
 }
 
 impl Settings {
@@ -119,5 +81,28 @@ impl Settings {
         let contents = toml::to_string_pretty(self)?;
         std::fs::write(path, contents)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_with_the_old_pane_placement_still_loads() {
+        let settings: Settings = toml::from_str(
+            r#"
+view = "kanban"
+list_layout = "flat"
+
+[pane]
+placement = "floating"
+width = 420.0
+"#,
+        )
+        .unwrap();
+        assert_eq!(settings.view, MainView::Kanban);
+        assert_eq!(settings.list_layout, ListLayout::Flat);
+        assert!(!toml::to_string(&settings).unwrap().contains("pane"));
     }
 }
