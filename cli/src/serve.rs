@@ -30,9 +30,9 @@ use std::time::Duration;
 use sapphire_framework::backend::WorkspaceBackend as _;
 use sapphire_framework::ipc::ManagedBy;
 use sapphire_framework::server::{
-    AppFiles, AppServer, AppSettings, BridgeConnector, FieldError, HttpConfig, SERVER_CONFIG_FILE,
-    ServerConfig, SettingDef, Settings, Staged, StatusRow, SyncRuntime, WorkspaceHost,
-    serve_restarting,
+    AppFiles, AppServer, AppSettings, BridgeConnector, FieldError, HttpConfig, ReleaseSource,
+    SERVER_CONFIG_FILE, ServerConfig, SettingDef, Settings, Staged, StatusRow, SyncRuntime,
+    WorkspaceHost, serve_restarting,
 };
 use sapphire_journal_core::{JOURNAL_CTX, JournalState, user_config::UserConfig};
 use serde::Deserialize as _;
@@ -54,6 +54,7 @@ pub const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3172";
 /// error instead of the framework's "no server is running".
 pub fn build_oneshot() -> AppServer {
     AppServer::new(&JOURNAL_CTX, VERSION)
+        .releases(release_source())
         .app_api(sapphire_journal_api::API_VERSION)
         .mcp(sapphire_journal_mcp::service())
 }
@@ -311,4 +312,12 @@ fn build_serving(
             value: mcp_row.clone(),
         }]
     }))
+}
+
+/// Where the app's releases are published: what `update` installs from, and where the
+/// server looks once a day for a newer one.
+fn release_source() -> ReleaseSource {
+    ReleaseSource::github("sapphire-turtle", "sapphire-journal")
+        .asset("sapphire-journal")
+        .cargo_crate("sapphire-journal")
 }
