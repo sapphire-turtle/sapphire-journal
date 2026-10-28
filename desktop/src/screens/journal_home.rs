@@ -16,38 +16,17 @@ use sapphire_journal_core::{
 
 use crate::app::{App, HomeState, Pending};
 use crate::icons;
-use crate::screens::entry_pane::{self, PaneAction};
+use crate::screens::entry_pane;
 use crate::screens::kanban;
-use crate::settings::{ListLayout, MainView, PanePlacement};
+use crate::settings::{ListLayout, MainView};
 use crate::widgets::buttons::{icon_btn, icon_text_btn, icon_toggle_btn};
 use crate::widgets::period_picker::period_picker;
 
-/// The journal screen: a view of the entries, and the pane the open one is
-/// edited in. Everything it shows comes from the running server's
-/// `sapphire-journal.*` methods, so it is the journal the server serves.
+/// The journal screen: a view of the entries. The open one is edited in the
+/// shell's side pane ([`entry_pane`]). Everything it shows comes from the
+/// running server's `sapphire-journal.*` methods, so it is the journal the
+/// server serves.
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
-    let open = app.home.selected_path.is_some();
-    let mut pane_action = None;
-
-    if open && app.home.pane_placement == PanePlacement::Side {
-        let panel = egui::Panel::right("entry_pane")
-            .resizable(true)
-            .default_size(app.home.pane_width)
-            .size_range(300.0..=720.0)
-            .show(ui, |ui| {
-                ui.add_space(4.0);
-                entry_pane::show(&mut app.home, ui)
-            });
-        pane_action = panel.inner;
-        // Remember a resize once the drag is over.
-        let width = panel.response.rect.width();
-        if (width - app.home.pane_width).abs() > 1.0 && !ui.ctx().input(|i| i.pointer.any_down()) {
-            app.home.pane_width = width;
-            app.settings.pane.width = width;
-            save_settings(app);
-        }
-    }
-
     egui::CentralPanel::default().show(ui, |ui| {
         draw_toolbar(app, ui);
         let home = &mut app.home;
@@ -71,46 +50,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             MainView::Kanban => kanban::show(home, &filtered, ui),
         }
     });
-
-    if open && app.home.pane_placement == PanePlacement::Floating {
-        let ctx = ui.ctx().clone();
-        let title = entry_pane::title(&app.home);
-        egui::Window::new(title)
-            .id(egui::Id::unique("entry_pane_window"))
-            .title_bar(false)
-            .resizable(true)
-            .default_size([420.0, 560.0])
-            // Where the docked pane would be: at the right, under the toolbar.
-            .pivot(egui::Align2::RIGHT_TOP)
-            .default_pos(ctx.content_rect().right_top() + egui::vec2(-16.0, 48.0))
-            .min_width(300.0)
-            .constrain_to(ctx.content_rect())
-            .show(&ctx, |ui| {
-                pane_action = entry_pane::show(&mut app.home, ui);
-            });
-    }
-
-    match pane_action {
-        Some(PaneAction::Place(placement)) => {
-            app.home.pane_placement = placement;
-            app.settings.pane.placement = placement;
-            save_settings(app);
-        }
-        None => {}
-    }
-
-    let ctx = ui.ctx().clone();
-    if app.home.confirm_delete.is_some() {
-        draw_confirm_delete_entry(&mut app.home, &ctx);
-    }
-    if app.home.unsaved.is_some() {
-        draw_confirm_unsaved(&mut app.home, &ctx);
-    }
 }
 
-fn save_settings(app: &mut App) {
-    if let Err(e) = app.settings.save() {
-        app.home.error_msg = Some(format!("Failed to save settings: {e}"));
+/// The questions about the open entry, while one is asked: delete it, or
+/// what to do with its unsaved changes.
+pub fn show_dialogs(home: &mut HomeState, ctx: &egui::Context) {
+    if home.confirm_delete.is_some() {
+        draw_confirm_delete_entry(home, ctx);
+    }
+    if home.unsaved.is_some() {
+        draw_confirm_unsaved(home, ctx);
     }
 }
 
