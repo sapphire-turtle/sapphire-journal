@@ -1,5 +1,7 @@
-//! The app server: what `sapphire-journal serve` (and a bare `sapphire-journal`)
-//! runs.
+//! sapphire-journal's app server: what `sapphire-journal serve` runs, in either
+//! edition. A library, not a binary of its own: the server is set up with the
+//! same `sapphire-journal` command that runs it (`sapphire-journal-cli`), so
+//! there is no separate server command to tell from the client's.
 //!
 //! The framework's [`AppServer`] owns the IPC socket, the current workspace
 //! (`workspace init|select|show|move|remove|map`), its search index, signals

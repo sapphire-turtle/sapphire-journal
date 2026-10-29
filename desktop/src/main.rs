@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! sapphire-journal's desktop app: the journal on the framework's shell,
-//! with its Settings.
+//! with its Settings — and, given a subcommand, the CLI.
 //!
-//! A pure client: it talks to the service-managed `sapphire-journal serve` and
-//! `sapphire-bridge` over IPC and never starts either itself, nor opens the
-//! journal. The Journal screen calls the server's `sapphire-journal.*`
+//! This one binary is a superset of the CLI's: bare, it opens the window;
+//! with `serve`, `mcp`, `entry`, `status`, … it runs the CLI's own code
+//! (`sapphire_journal_cli::run`), so the service manager and MCP clients can
+//! start it as they start `sapphire-journal`.
+//!
+//! The window is a pure client: it talks to the service-managed
+//! `sapphire-journal serve` and `sapphire-bridge` over IPC and never starts
+//! either itself, nor opens the journal. The Journal screen calls the server's `sapphire-journal.*`
 //! methods, so it shows the journal the server has selected; Settings picks
 //! that journal and manages the workgroup. Closing the window stops nothing.
 
+use clap::Parser;
 use sapphire_framework::gui::app::{AppOptions, AppSetup};
 use sapphire_framework::gui::client::AppIdentity;
 use sapphire_framework::gui::eframe;
+use sapphire_journal_cli::cli::Command;
 use sapphire_journal_mcp::JournalClient;
 
 mod api;
@@ -30,7 +37,26 @@ const APP: AppIdentity = AppIdentity {
     version: env!("CARGO_PKG_VERSION"),
 };
 
-fn main() -> eframe::Result<()> {
+/// The CLI's command line, with the subcommand optional: none opens the window.
+#[derive(Parser)]
+#[command(
+    name = "sapphire-journal",
+    about = "Markdown-based task and note manager: the desktop app, or the CLI's commands",
+    version
+)]
+struct DesktopCli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+fn main() -> anyhow::Result<()> {
+    match DesktopCli::parse().command {
+        Some(command) => sapphire_journal_cli::run(command),
+        None => Ok(window()?),
+    }
+}
+
+fn window() -> eframe::Result<()> {
     sapphire_framework::gui::app::run(
         AppOptions::new(APP, "Sapphire Journal")
             .inner_size([900.0, 600.0])

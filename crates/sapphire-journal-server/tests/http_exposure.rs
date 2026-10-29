@@ -1,7 +1,7 @@
 //! `check_exposure`: a non-loopback bind with no `allowed_hosts` would answer
 //! every `/mcp` request with 403, so the server refuses to start that way.
 
-use sapphire_journal::serve::check_exposure;
+use sapphire_journal_server::check_exposure;
 
 #[test]
 fn loopback_needs_no_allowed_hosts() {

@@ -19,8 +19,12 @@ impl Server {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        let client = JournalClient::for_app(JOURNAL_CTX.app_name, "cli", crate::serve::VERSION)
-            .map_err(anyhow::Error::msg)?;
+        let client = JournalClient::for_app(
+            JOURNAL_CTX.app_name,
+            "cli",
+            sapphire_journal_server::VERSION,
+        )
+        .map_err(anyhow::Error::msg)?;
         Ok(Server { runtime, client })
     }
 

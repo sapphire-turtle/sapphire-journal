@@ -1,0 +1,25 @@
+[package]
+name = "sapphire-journal-server"
+edition.workspace = true
+# Released together with the editions that run it (release-plz.toml).
+version = "0.15.0"
+description = "sapphire-journal's app server: the one process that reads and writes the journal, with its sync and MCP methods"
+license.workspace = true
+repository.workspace = true
+categories = ["text-processing"]
+keywords = ["markdown", "task-management", "notes", "mcp"]
+
+[features]
+default = ["redb-store"]
+redb-store = ["sapphire-framework/redb-store"]
+
+[dependencies]
+sapphire-journal-core = { path = "../sapphire-journal-core", version = "0.14.0" }
+sapphire-journal-api  = { path = "../sapphire-journal-api",  version = "3.0.0" }
+sapphire-journal-mcp  = { path = "../sapphire-journal-mcp", version = "0.3.0" }
+sapphire-framework = { workspace = true, features = ["server", "ipc", "mcp"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
+serde.workspace = true
+anyhow.workspace = true
+toml.workspace = true
+tracing.workspace = true
