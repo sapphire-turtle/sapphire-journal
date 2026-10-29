@@ -4,6 +4,12 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [Unreleased]
 
+## [0.14.1](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.14.0...v0.14.1) - 2026-10-29
+
+### Other
+
+- call the shared workflows from sapphire-turtle/.github@v1
+
 ## [0.14.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.13.0...v0.14.0) - 2026-10-25
 
 ### Added

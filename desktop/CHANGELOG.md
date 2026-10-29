@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/sapphire-turtle/sapphire-journal/compare/desktop-v0.3.0...desktop-v0.3.1) - 2026-10-29
+
+### Added
+
+- *(desktop)* edit the open entry in the shell's side pane
+
+### Other
+
+- call the shared workflows from sapphire-turtle/.github@v1
+- the filled app icon
+- add the app icon and show it in the README
+
 ## [0.3.0](https://github.com/sapphire-turtle/sapphire-journal/compare/desktop-v0.2.0...desktop-v0.3.0) - 2026-10-25
 
 ### Added
