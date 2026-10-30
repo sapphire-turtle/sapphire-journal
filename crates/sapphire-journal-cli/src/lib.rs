@@ -26,26 +26,28 @@ use crate::client::Server;
 use crate::commands::config::ConfigCommand;
 use sapphire_journal_server as serve;
 
-/// Run one command, exiting the process with its code when a framework verb
-/// fails with one.
-pub fn run(command: Command) -> Result<()> {
+pub use sapphire_journal_server::Edition;
+
+/// Run one command as `edition`, exiting the process with its code when a
+/// framework verb fails with one.
+pub fn run(command: Command, edition: Edition) -> Result<()> {
     match command {
         // What the service manager starts.
         Command::Framework(FrameworkVerbs(FrameworkCommand::Serve)) => {
             sapphire_journal_core::init_app_context(AppKind::Server);
-            runtime()?.block_on(serve::run())
+            runtime()?.block_on(serve::run(edition))
         }
         // Warned first: `dispatch` exits when the status is not good.
         Command::Framework(FrameworkVerbs(FrameworkCommand::Status)) => {
             warn_if_shadowed();
-            dispatch(FrameworkCommand::Status)
+            dispatch(FrameworkCommand::Status, edition)
         }
         // `mcp` among them: its stdout is the MCP stream, and the
         // framework's console log goes to stderr.
-        Command::Framework(FrameworkVerbs(command)) => dispatch(command),
+        Command::Framework(FrameworkVerbs(command)) => dispatch(command, edition),
         Command::Config {
             action: ConfigCommand::Settings(command),
-        } => dispatch(FrameworkCommand::Config(command)),
+        } => dispatch(FrameworkCommand::Config(command), edition),
         // The journal's own verbs: requests to the running server.
         Command::Entry { action } => commands::entry::run(&Server::new()?, action),
         Command::Cache { action } => commands::cache::run(&Server::new()?, action),
@@ -56,9 +58,9 @@ pub fn run(command: Command) -> Result<()> {
 }
 
 /// Run one of the framework's verbs other than `serve`, exiting with its code.
-fn dispatch(command: FrameworkCommand) -> Result<()> {
+fn dispatch(command: FrameworkCommand, edition: Edition) -> Result<()> {
     sapphire_journal_core::init_app_context(AppKind::Cli);
-    let build = |_: &Settings| serve::build_oneshot();
+    let build = |_: &Settings| serve::build_oneshot(edition);
     let code = runtime()?.block_on(command.dispatch(
         &JOURNAL_CTX,
         serve::JournalOwner,

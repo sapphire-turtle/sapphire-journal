@@ -4,8 +4,9 @@
 
 use anyhow::Result;
 use clap::Parser as _;
+use sapphire_journal_cli::Edition;
 use sapphire_journal_cli::cli::Cli;
 
 fn main() -> Result<()> {
-    sapphire_journal_cli::run(Cli::parse().command)
+    sapphire_journal_cli::run(Cli::parse().command, Edition::Headless)
 }

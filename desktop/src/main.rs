@@ -18,6 +18,7 @@ use clap::Parser;
 use sapphire_framework::gui::app::{AppOptions, AppSetup};
 use sapphire_framework::gui::client::AppIdentity;
 use sapphire_framework::gui::eframe;
+use sapphire_journal_cli::Edition;
 use sapphire_journal_cli::cli::Command;
 use sapphire_journal_mcp::JournalClient;
 
@@ -51,7 +52,7 @@ struct DesktopCli {
 
 fn main() -> anyhow::Result<()> {
     match DesktopCli::parse().command {
-        Some(command) => sapphire_journal_cli::run(command),
+        Some(command) => sapphire_journal_cli::run(command, Edition::Desktop),
         None => Ok(window()?),
     }
 }
