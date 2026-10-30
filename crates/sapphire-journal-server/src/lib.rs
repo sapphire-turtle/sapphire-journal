@@ -32,9 +32,9 @@ use std::time::Duration;
 use sapphire_framework::backend::WorkspaceBackend as _;
 use sapphire_framework::ipc::ManagedBy;
 use sapphire_framework::server::{
-    AppFiles, AppServer, AppSettings, BridgeConnector, FieldError, HttpConfig, SERVER_CONFIG_FILE,
-    ServerConfig, SettingDef, Settings, Staged, StatusRow, SyncRuntime, WorkspaceHost,
-    serve_restarting,
+    AppFiles, AppServer, AppSettings, BridgeConnector, FieldError, HttpConfig, ReleaseSource,
+    SERVER_CONFIG_FILE, ServerConfig, SettingDef, Settings, Staged, StatusRow, SyncRuntime,
+    WorkspaceHost, serve_restarting,
 };
 use sapphire_journal_core::{JOURNAL_CTX, JournalState, user_config::UserConfig};
 use serde::Deserialize as _;
@@ -46,6 +46,32 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// otherwise: loopback, on the port `sapphire-journal-server` used.
 pub const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3172";
 
+/// Which edition runs the server: the release file `update` installs is the
+/// edition's own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edition {
+    /// `sapphire-journal-headless`, the command line alone.
+    Headless,
+    /// `sapphire-journal-desktop`, the desktop app.
+    Desktop,
+}
+
+impl Edition {
+    /// Where the edition's releases are published: what `update` installs
+    /// from, and where the server looks once a day for a newer one. Both are
+    /// in the shared `v{version}` release (release-binaries.yml), as
+    /// `<crate>-<os>-<arch>`; only the headless edition is on crates.io.
+    pub fn releases(self) -> ReleaseSource {
+        let source = ReleaseSource::github("sapphire-turtle", "sapphire-journal");
+        match self {
+            Edition::Headless => source
+                .asset("sapphire-journal-headless")
+                .cargo_crate("sapphire-journal-headless"),
+            Edition::Desktop => source.asset("sapphire-journal-desktop"),
+        }
+    }
+}
+
 /// The server the framework's one-shot verbs dispatch against: the journal's
 /// MCP tools and API version, nothing mounted.
 ///
@@ -54,7 +80,12 @@ pub const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:3172";
 /// `mcp` serves the journal's tools on stdio, dialling that server. Opening a
 /// bridge here would make `mcp` on a host without one fail with a bridge
 /// error instead of the framework's "no server is running".
-pub fn build_oneshot() -> AppServer {
+pub fn build_oneshot(edition: Edition) -> AppServer {
+    base().releases(edition.releases())
+}
+
+/// The journal's MCP tools and API version, on the framework's server.
+fn base() -> AppServer {
     AppServer::new(&JOURNAL_CTX, VERSION)
         .app_api(sapphire_journal_api::API_VERSION)
         .mcp(sapphire_journal_mcp::service())
@@ -63,9 +94,10 @@ pub fn build_oneshot() -> AppServer {
 /// The journal's server, without sync: the framework's server with the
 /// journal's methods, its MCP tools, and its HTTP port.
 ///
-/// [`run`] adds the bridge and the re-scan; a test runs this as it is.
+/// [`run`] adds the release source, the bridge and the re-scan; a test runs
+/// this as it is, so it never looks for a newer release.
 pub fn build() -> (AppServer, Arc<CurrentJournal>) {
-    let server = build_oneshot().http_listen(default_http_addr());
+    let server = base().http_listen(default_http_addr());
     let journal = Arc::new(CurrentJournal::new(Arc::clone(server.host())));
     let source = Arc::clone(&journal);
     let written = Arc::clone(&journal);
@@ -252,9 +284,9 @@ pub fn spawn_rescan(
     })
 }
 
-/// Run the server until SIGTERM or SIGINT, in place again on
+/// Run the server as `edition` until SIGTERM or SIGINT, in place again on
 /// `server.restart`.
-pub async fn run() -> anyhow::Result<()> {
+pub async fn run(edition: Edition) -> anyhow::Result<()> {
     // Resolved once, up front: a server's `build` cannot fail.
     let exe = std::env::current_exe()?;
     // The re-scan outlives the rounds: each round's server points it at its
@@ -264,7 +296,7 @@ pub async fn run() -> anyhow::Result<()> {
         .sync_interval()
         .map(|interval| spawn_rescan(Arc::clone(&current), interval));
     let result = serve_restarting(&JOURNAL_CTX, JournalOwner, |settings: &Settings| {
-        build_serving(settings, &exe, &current)
+        build_serving(settings, &exe, edition, &current)
     })
     .await;
     if let Some(rescan) = rescan {
@@ -273,11 +305,12 @@ pub async fn run() -> anyhow::Result<()> {
     Ok(result?)
 }
 
-/// One round of [`run`]: [`build`], with sync and the status row, as
-/// `settings` say.
+/// One round of [`run`]: [`build`], with `edition`'s release source, sync and
+/// the status row, as `settings` say.
 fn build_serving(
     settings: &Settings,
     exe: &std::path::Path,
+    edition: Edition,
     current: &Mutex<Weak<CurrentJournal>>,
 ) -> AppServer {
     // The framework checked the settings before handing them over, so they
@@ -299,7 +332,7 @@ fn build_serving(
         exe.to_path_buf(),
         ManagedBy::Service,
     );
-    let server = server.sync(Arc::new(runtime));
+    let server = server.releases(edition.releases()).sync(Arc::new(runtime));
 
     let mcp_row = if config.http.mcp.enabled {
         let http_addr = config.http.listen.unwrap_or_else(default_http_addr);
