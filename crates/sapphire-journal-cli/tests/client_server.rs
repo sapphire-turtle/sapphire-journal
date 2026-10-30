@@ -48,7 +48,7 @@ async fn clients_read_and_write_the_journal_through_the_server() {
         "got: {err}"
     );
 
-    let (server, _journal) = sapphire_journal::serve::build();
+    let (server, _journal) = sapphire_journal_server::build();
     let server = server.endpoint(endpoint.clone());
     let task = tokio::spawn(async move { server.run().await.unwrap() });
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);

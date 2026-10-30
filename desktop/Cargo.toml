@@ -1,6 +1,8 @@
 [package]
 name = "sapphire-journal-desktop"
-version = "0.3.0"
+# Released together with `sapphire-journal-headless`, under its `v{version}`
+# tags (release-plz.toml).
+version = "0.15.0"
 authors = ["fluo10 <fluo10@fireturtle.net>"]
 edition.workspace = true
 description.workspace = true
@@ -9,8 +11,11 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+# Every command but the window — `serve`, `mcp`, `entry`, `status`, … — runs the
+# CLI's own code, so this one binary does all the CLI does.
+sapphire-journal-cli  = { path = "../crates/sapphire-journal-cli", version = "0.15.0" }
 # The entry types the server's answers deserialize into, and the methods'
-# parameters and names. The desktop reads nothing from the journal itself:
+# parameters and names. The window reads nothing from the journal itself:
 # it is a client of the `sapphire-journal` server.
 sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.14.0" }
 sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "3.0.0" }
@@ -23,6 +28,8 @@ grain-id = { version = "0.15" }
 serde = { workspace = true }
 toml = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+clap = { workspace = true }
+anyhow = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 
@@ -36,13 +43,13 @@ pkg-fmt = "bin"
 disabled-strategies = ["quick-install"]
 
 [package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
-pkg-url = "{ repo }/releases/download/desktop-v{ version }/{ name }-linux-x86_64"
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-linux-x86_64"
 
 [package.metadata.binstall.overrides.aarch64-unknown-linux-gnu]
-pkg-url = "{ repo }/releases/download/desktop-v{ version }/{ name }-linux-aarch64"
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-linux-aarch64"
 
 [package.metadata.binstall.overrides.aarch64-apple-darwin]
-pkg-url = "{ repo }/releases/download/desktop-v{ version }/{ name }-macos-aarch64"
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-macos-aarch64"
 
 [package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
-pkg-url = "{ repo }/releases/download/desktop-v{ version }/{ name }-windows-x86_64.exe"
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-windows-x86_64.exe"

@@ -1,8 +1,9 @@
-# sapphire-journal
+# sapphire-journal-headless
 
-Unified binary for [sapphire-journal](https://github.com/sapphire-turtle/sapphire-journal) — a Markdown-based task and note manager.
-One binary is the CLI for humans, the app server that serves, indexes and syncs a journal,
-and the MCP server for AI agents.
+The headless edition of [sapphire-journal](https://github.com/sapphire-turtle/sapphire-journal) — a Markdown-based task and note manager —
+for hosts without a GUI. Its one binary, `sapphire-journal`, is the CLI for humans, the app
+server that serves, indexes and syncs a journal, and the MCP server for AI agents. The
+desktop app's binary runs the same commands and is put on PATH under the same name.
 
 ## Installation
 
@@ -25,8 +26,12 @@ options.
 ### From crates.io
 
 ```bash
-cargo install sapphire-journal
+cargo binstall sapphire-journal-headless   # the release file
+cargo install sapphire-journal-headless    # or build it
 ```
+
+Either installs the `sapphire-journal` binary. The desktop app's binary runs the same
+commands; install only one of the two.
 
 ### From source
 

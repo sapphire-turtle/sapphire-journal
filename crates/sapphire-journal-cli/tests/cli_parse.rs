@@ -2,8 +2,8 @@
 //! flat at the top level (#300).
 
 use clap::Parser as _;
-use sapphire_journal::cli::{Cli, Command, FrameworkCommand, FrameworkVerbs};
-use sapphire_journal::commands::config::ConfigCommand;
+use sapphire_journal_cli::cli::{Cli, Command, FrameworkCommand, FrameworkVerbs};
+use sapphire_journal_cli::commands::config::ConfigCommand;
 
 fn parse(args: &[&str]) -> Cli {
     Cli::try_parse_from(std::iter::once("sapphire-journal").chain(args.iter().copied()))

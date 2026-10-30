@@ -78,7 +78,19 @@ event:
 
 ## Installation
 
-### Install script
+Install **one** of the two editions. Both put the same command, `sapphire-journal`, on
+PATH: the desktop app's binary also runs every command of the headless one (`serve`,
+`mcp`, `entry`, …), so it is a superset of it.
+
+| Edition | For | How |
+|---|---|---|
+| Desktop app (`sapphire-journal-desktop`) | Everyday use, with the GUI | Installer for Windows, macOS and Linux (in preparation) |
+| Headless (`sapphire-journal-headless`) | Hosts and servers without a GUI | Install script, cargo-binstall or cargo |
+
+Installing both leaves two `sapphire-journal` commands; `sapphire-journal status` warns
+when the one on PATH is not the one you ran.
+
+### Headless: install script
 
 ```sh
 # Linux, macOS
@@ -91,36 +103,34 @@ curl -fsSL https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/
 ```
 
 This installs `sapphire-journal` together with `sapphire-bridge`, which it syncs
-through, into `~/.local/bin`. Add `journal-desktop` for the desktop app. See the
+through, into `~/.local/bin`. See the
 [install script's README](https://github.com/sapphire-turtle/sapphire-framework/tree/main/install) for the options.
 
-### cargo-binstall
+### Headless: cargo-binstall or cargo
 
 ```sh
-cargo binstall sapphire-journal
-# The desktop app is not on crates.io
-cargo binstall --git https://github.com/sapphire-turtle/sapphire-journal sapphire-journal-desktop
+cargo binstall sapphire-journal-headless
+# or build it
+cargo install sapphire-journal-headless
 ```
 
-### From source
-
-```sh
-cargo install sapphire-journal
-```
+Either installs the `sapphire-journal` binary. (0.13 and 0.14 were published as the
+`sapphire-journal` crate, and 0.12 as `sapphire-journal-cli`, now the library both
+editions share.)
 
 ## CLI usage
 
-See [cli/README.md](cli/README.md) for the full command reference.
+See [headless/README.md](headless/README.md) for the full command reference.
 
 A **journal** is any directory tree that contains a `.sapphire-journal/` directory.
 Use `sapphire-journal workspace init <dir>` to make one of an existing directory.
 
 `sapphire-journal` is one binary: the journal's own commands (`entry`, `cache`, …)
 sit beside [sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework)'s
-(`serve`, `status`, `service`, `workspace`, `mcp`, …). Run bare (or as `serve`), it is the
+(`serve`, `status`, `service`, `workspace`, `mcp`, …). As `serve`, it is the
 app server: the one process that reads and writes the journal. It serves one journal,
 indexes it for search, syncs it through the host's `sapphire-bridge`, and answers MCP.
-Every other command — and the desktop app — is a client of it over IPC, working on the
+Every other command — and the desktop app's window — is a client of it over IPC, working on the
 journal it serves (`sapphire-journal workspace init|select <dir>` chooses it).
 
 ```sh
@@ -140,9 +150,11 @@ Semantic search uses the embedding model the host's `sapphire-bridge` runs
 
 ```
 sapphire-journal/
-├── cli/                     # The sapphire-journal binary: CLI and app server
-├── desktop/                 # Desktop GUI (egui)
+├── headless/                # sapphire-journal-headless: the `sapphire-journal` binary without the GUI
+├── desktop/                 # Desktop GUI (egui), which runs the same commands
 └── crates/
+    ├── sapphire-journal-cli/    # The command line both editions run
+    ├── sapphire-journal-server/ # The app server (`sapphire-journal serve`)
     ├── sapphire-journal-core/   # Data model, Markdown parser/serializer, SQLite entry cache
     └── sapphire-journal-mcp/    # The journal's server methods and the MCP tools that call them
 ```
@@ -159,8 +171,14 @@ This repository contains components under different licenses:
 |-----------|---------|
 | `sapphire-journal-api` | MIT OR Apache-2.0 |
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
-| `sapphire-journal` | MIT OR Apache-2.0 |
+| `sapphire-journal-cli` | MIT OR Apache-2.0 |
+| `sapphire-journal-headless` | MIT OR Apache-2.0 |
+| `sapphire-journal-server` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later, with [App Store marketplace exception](desktop/LICENSE.App-Store-Exception) |
+
+The desktop app's binary includes the MIT/Apache-2.0 code of the command line and the
+server, so the binary as a
+whole is distributed under GPL-3.0-or-later (with the same exception).
 
 See the `LICENSE` (or `LICENSE-MIT` / `LICENSE-APACHE`) file in each component's directory for the full license text.

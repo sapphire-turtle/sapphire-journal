@@ -76,7 +76,18 @@ event:
 
 ## インストール
 
-### インストールスクリプト
+2つの版の**どちらか1つ**を入れてください。どちらも PATH に同じコマンド `sapphire-journal` を置きます。
+デスクトップ版のバイナリはヘッドレス版のコマンド（`serve`・`mcp`・`entry` など）もすべて実行できるので、ヘッドレス版の上位互換です。
+
+| 版 | 用途 | 入れ方 |
+|---|---|---|
+| デスクトップ版（`sapphire-journal-desktop`） | GUI を使うふだんの利用 | Windows・macOS・Linux のインストーラー（準備中） |
+| ヘッドレス版（`sapphire-journal-headless`） | GUI のないホストやサーバー | インストールスクリプト、cargo-binstall、cargo |
+
+両方を入れると `sapphire-journal` が2つになります。PATH 上のものが実行したものと違うときは、
+`sapphire-journal status` が警告します。
+
+### ヘッドレス版：インストールスクリプト
 
 ```sh
 # Linux, macOS
@@ -88,27 +99,22 @@ curl -fsSL https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/sapphire-turtle/sapphire-framework/main/install/install.ps1))) journal
 ```
 
-`sapphire-journal` と、同期に使う `sapphire-bridge` を `~/.local/bin` にインストールします。
-デスクトップアプリも入れるときは `journal-desktop` を加えてください。オプションは
+`sapphire-journal` と、同期に使う `sapphire-bridge` を `~/.local/bin` にインストールします。オプションは
 [インストールスクリプトの README](https://github.com/sapphire-turtle/sapphire-framework/tree/main/install/README.ja.md) を参照してください。
 
-### cargo-binstall
+### ヘッドレス版：cargo-binstall か cargo
 
 ```sh
-cargo binstall sapphire-journal
-# デスクトップアプリは crates.io にない
-cargo binstall --git https://github.com/sapphire-turtle/sapphire-journal sapphire-journal-desktop
+cargo binstall sapphire-journal-headless
+# またはビルドする
+cargo install sapphire-journal-headless
 ```
 
-### ソースから
-
-```sh
-cargo install sapphire-journal
-```
+どちらも `sapphire-journal` バイナリを入れます（0.13 と 0.14 は `sapphire-journal`、0.12 は `sapphire-journal-cli` という crate 名で公開していました。`sapphire-journal-cli` は今は両方の版が使うライブラリです）。
 
 ## CLIの使い方
 
-コマンドリファレンス全体は[cli/README.md](cli/README.md)を参照してください。
+コマンドリファレンス全体は[headless/README.md](headless/README.md)を参照してください。
 
 **ジャーナル**とは、`.sapphire-journal/`ディレクトリを含むディレクトリツリーのことです。既存のディレクトリを`sapphire-journal workspace init <dir>`でジャーナルにします。
 
@@ -127,9 +133,11 @@ AIエージェントは`sapphire-journal mcp`（stdio）で接続します。`sa
 
 ```
 sapphire-journal/
-├── cli/                     # sapphire-journalバイナリ：CLIとアプリサーバー
-├── desktop/                 # デスクトップGUI（egui）
+├── headless/                # sapphire-journal-headless：GUIなしの sapphire-journal バイナリ
+├── desktop/                 # デスクトップGUI（egui）。同じコマンドも実行できる
 └── crates/
+    ├── sapphire-journal-cli/    # 両方の版が使うコマンドライン
+    ├── sapphire-journal-server/ # アプリサーバー（`sapphire-journal serve`）
     ├── sapphire-journal-core/   # データモデル、Markdownパーサ/シリアライザ、SQLiteのentryキャッシュ
     └── sapphire-journal-mcp/    # ジャーナルのサーバーメソッドと、それを呼ぶMCPツール
 ```
@@ -146,8 +154,12 @@ sapphire-journal/
 |-----------|---------|
 | `sapphire-journal-api` | MIT OR Apache-2.0 |
 | `sapphire-journal-core` | MIT OR Apache-2.0 |
-| `sapphire-journal` | MIT OR Apache-2.0 |
+| `sapphire-journal-cli` | MIT OR Apache-2.0 |
+| `sapphire-journal-headless` | MIT OR Apache-2.0 |
+| `sapphire-journal-server` | MIT OR Apache-2.0 |
 | `sapphire-journal-mcp` | MIT OR Apache-2.0 |
 | `sapphire-journal-desktop` | GPL-3.0-or-later、App Storeマーケットプレイス例外付き |
+
+デスクトップ版のバイナリはコマンドラインとサーバーの MIT / Apache-2.0 のコードを含むため、バイナリ全体は GPL-3.0-or-later（同じ例外付き）で配布されます。
 
 各コンポーネントのディレクトリにある`LICENSE`（または`LICENSE-MIT` / `LICENSE-APACHE`）ファイルに完全なライセンス文書があります。

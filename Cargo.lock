@@ -5201,25 +5201,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sapphire-journal"
-version = "0.14.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "sapphire-framework",
- "sapphire-journal-api",
- "sapphire-journal-core",
- "sapphire-journal-mcp",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "toml",
- "tracing",
-]
-
-[[package]]
 name = "sapphire-journal-api"
 version = "3.0.0"
 dependencies = [
@@ -5230,6 +5211,26 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "sapphire-journal-cli"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "sapphire-framework",
+ "sapphire-journal-api",
+ "sapphire-journal-core",
+ "sapphire-journal-mcp",
+ "sapphire-journal-server",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
 ]
 
 [[package]]
@@ -5255,19 +5256,31 @@ dependencies = [
 
 [[package]]
 name = "sapphire-journal-desktop"
-version = "0.3.0"
+version = "0.15.0"
 dependencies = [
+ "anyhow",
  "chrono",
+ "clap",
  "egui_extras",
  "grain-id 0.15.0",
  "sapphire-framework",
  "sapphire-journal-api",
+ "sapphire-journal-cli",
  "sapphire-journal-core",
  "sapphire-journal-mcp",
  "serde",
  "tokio",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "sapphire-journal-headless"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "sapphire-journal-cli",
 ]
 
 [[package]]
@@ -5285,6 +5298,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "sapphire-journal-server"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "sapphire-framework",
+ "sapphire-journal-api",
+ "sapphire-journal-core",
+ "sapphire-journal-mcp",
+ "serde",
+ "tokio",
+ "toml",
  "tracing",
 ]
 
