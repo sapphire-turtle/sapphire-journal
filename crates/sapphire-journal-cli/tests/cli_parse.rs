@@ -34,9 +34,8 @@ fn the_framework_verbs_sit_at_the_top_level() {
         &["service", "status"],
         &["workspace", "show"],
         &["workspace", "select", "/tmp/journal"],
-        &["workgroup", "list"],
-        &["device", "list"],
-        &["embedding", "show"],
+        &["api-key", "list"],
+        // The hidden alias `api-key` keeps for this release.
         &["external-device", "list"],
         &["update", "--check"],
         &["mcp"],
@@ -44,6 +43,22 @@ fn the_framework_verbs_sit_at_the_top_level() {
         assert!(
             matches!(parse(args).command, Command::Framework(_)),
             "{args:?} should be a framework verb"
+        );
+    }
+}
+
+#[test]
+fn the_bridge_verbs_are_gone() {
+    // sapphire-framework 0.24 moved them to `sapphire-bridge`.
+    for args in [
+        &["workgroup", "list"][..],
+        &["device", "list"],
+        &["embedding", "show"],
+    ] {
+        assert!(
+            Cli::try_parse_from(std::iter::once("sapphire-journal").chain(args.iter().copied()))
+                .is_err(),
+            "{args:?} should no longer parse"
         );
     }
 }

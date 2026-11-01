@@ -144,7 +144,7 @@ AI agents connect with `sapphire-journal mcp` (stdio), or over HTTP at
 `http://127.0.0.1:3172/mcp` once `sapphire-journal config set http.mcp.enabled=true --restart`
 turns it on (`[http.mcp] enabled = true` in the server's `config.toml`).
 Semantic search uses the embedding model the host's `sapphire-bridge` runs
-(`sapphire-journal embedding show`); without one, search is full-text.
+(`sapphire-bridge embedding show`); without one, search is full-text.
 
 ## Project structure
 

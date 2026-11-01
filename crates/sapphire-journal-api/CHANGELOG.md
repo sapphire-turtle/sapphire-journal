@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- [**breaking**] `sapphire-framework-server-api` 6.0 (sapphire-framework 0.24), re-exported as `server`; `API_VERSION` 4
+
+
 ## [3.0.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-api-v2.0.0...sapphire-journal-api-v3.0.0) - 2026-10-25
 
 ### Other

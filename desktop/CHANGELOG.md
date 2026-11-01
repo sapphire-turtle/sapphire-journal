@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- [**breaking**] follow sapphire-framework 0.24: Settings has an API keys page (keys kept in the journal, each with a profile; existing keys become read-only) and links to the Sapphire Bridge window for the workgroup, devices and embedding.
+
+
 ## [0.3.0](https://github.com/sapphire-turtle/sapphire-journal/compare/desktop-v0.2.0...desktop-v0.3.0) - 2026-10-25
 
 ### Added

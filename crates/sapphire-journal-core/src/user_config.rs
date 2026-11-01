@@ -23,7 +23,7 @@ fn default_sync_interval_minutes() -> Option<u32> {
 /// so that the same journal can be shared across machines.
 ///
 /// Embedding is not configured here: the host's `sapphire-bridge` embeds for
-/// every app (`sapphire-journal embedding …`). A `[cache.retrieve]` section left
+/// every app (`sapphire-bridge embedding …`). A `[cache.retrieve]` section left
 /// over from an older version is kept as it is and ignored.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserConfig {
