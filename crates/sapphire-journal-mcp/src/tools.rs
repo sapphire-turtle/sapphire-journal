@@ -232,6 +232,40 @@ mod tests {
         }
     }
 
+    /// A read-only API key may call only the tools marked `readOnlyHint`, so
+    /// the journal's reads carry it and its writes do not.
+    #[test]
+    fn the_read_tools_are_marked_read_only() {
+        let read_only = |name: &str| {
+            tools()
+                .into_iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("missing {name}"))
+                .annotations
+                .and_then(|a| a.read_only_hint)
+                .unwrap_or(false)
+        };
+        for name in [
+            "entry_list",
+            "entry_tree",
+            "entry_show",
+            "entry_check",
+            "cache_info",
+        ] {
+            assert!(read_only(name), "{name} should be read-only");
+        }
+        for name in [
+            "entry_new",
+            "entry_modify",
+            "entry_fix",
+            "entry_remove",
+            "cache_sync",
+            "cache_rebuild",
+        ] {
+            assert!(!read_only(name), "{name} writes");
+        }
+    }
+
     /// The journal's eleven, the framework's read-only seven, and none of the
     /// framework's raw file writes.
     #[test]

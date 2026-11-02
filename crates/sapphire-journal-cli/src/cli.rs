@@ -43,8 +43,7 @@ pub enum Command {
         action: commands::config::ConfigCommand,
     },
     /// The framework's verbs: serve, status, service, update, workspace,
-    /// workgroup, device, embedding, external-device, mcp. Its `config` is
-    /// under the journal's.
+    /// api-key, mcp. Its `config` is under the journal's.
     #[command(flatten)]
     Framework(FrameworkVerbs),
 }

@@ -206,7 +206,7 @@ sapphire-journal entry search --semantic <query>   # vector similarity
 ```
 
 Search asks the running server, which indexes the journal it serves. Semantic search
-uses the embedding model of the host's `sapphire-bridge` (`sapphire-journal embedding show`
+uses the embedding model of the host's `sapphire-bridge` (`sapphire-bridge embedding show`
 to see or change it); without one it falls back to full text.
 
 ### Cache commands
@@ -220,9 +220,10 @@ sapphire-journal cache clean      # remove cache files of older versions
 
 ### Framework commands
 
-`serve`, `status`, `service`, `workspace`, `workgroup`, `device`, `embedding`,
-`external-device` and `mcp` come from [sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework);
-see `sapphire-journal <command> --help`.
+`serve`, `status`, `service`, `update`, `workspace`, `api-key` and `mcp` come from
+[sapphire-framework](https://github.com/sapphire-turtle/sapphire-framework);
+see `sapphire-journal <command> --help`. The workgroup, its devices and the embedding
+model are managed with `sapphire-bridge workgroup|device|embedding`.
 
 ### DATETIME format
 
@@ -253,8 +254,10 @@ app server, so it must be running (`sapphire-journal serve`, or the OS service).
 - **HTTP**: `sapphire-journal config set http.mcp.enabled=true --restart` (or
   `[http.mcp] enabled = true` in the server's `config.toml`, in the app's config
   directory); the server then answers at `http://127.0.0.1:3172/mcp` (`http.listen`
-  changes the address). Every request needs an external device's token:
-  `sapphire-journal external-device add <name>`.
+  changes the address). Every request needs an API key, kept in the journal
+  (`.sapphire-journal/api_keys/`): `sapphire-journal api-key add <name> --profile read-only`
+  for an agent that only reads, `--profile read-write` for one that also writes. A
+  read-only key may call only the read-only tools.
 
 ### Example: Claude Desktop
 

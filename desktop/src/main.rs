@@ -12,7 +12,8 @@
 //! `sapphire-journal serve` and `sapphire-bridge` over IPC and never starts
 //! either itself, nor opens the journal. The Journal screen calls the server's `sapphire-journal.*`
 //! methods, so it shows the journal the server has selected; Settings picks
-//! that journal and manages the workgroup. Closing the window stops nothing.
+//! that journal, manages its API keys and opens the Sapphire Bridge window for
+//! the workgroup. Closing the window stops nothing.
 
 use clap::Parser;
 use sapphire_framework::gui::app::{AppOptions, AppSetup};

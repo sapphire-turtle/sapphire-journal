@@ -4,6 +4,15 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [Unreleased]
 
+### Changed
+
+- [**breaking**] follow sapphire-framework 0.24:
+  - HTTP clients (`/mcp`) authenticate with API keys kept in the journal (`.sapphire-journal/api_keys/`), managed with `sapphire-journal api-key list|add|retire|restore|rotate`; `external-device` is a hidden alias for this release. The workgroup's external devices are imported once, so existing tokens keep working.
+  - Every key has a profile (`read-only`, `read-write`, `admin`), and `api-key add` requires `--profile`. Existing keys become **read-only**: they may call only the read-only MCP tools (`entry_list`, `entry_tree`, `entry_show`, `entry_check`, `cache_info` and the framework's), so an agent that writes needs a new key, `sapphire-journal api-key add <name> --profile read-write`.
+  - `workgroup`, `device` and `embedding` are removed: use `sapphire-bridge workgroup|device|embedding`. `sapphire-bridge` 0.24 is needed alongside (its crate is now `sapphire-bridge-headless`).
+  - Windows: settings and data move from `%APPDATA%` to `%LOCALAPPDATA%\sapphire-journal` on the first start; macOS: the service's LaunchAgent label becomes `org.sapphire-turtle.sapphire-journal` (an old agent is moved by `service install`/`uninstall`/`status`).
+
+
 ## [0.14.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.13.0...v0.14.0) - 2026-10-25
 
 ### Added

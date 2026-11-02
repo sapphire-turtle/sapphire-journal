@@ -9,7 +9,7 @@
 #
 # Embedding (semantic search) is not configured here: the host's
 # `sapphire-bridge` runs one model for every app. See
-# `sapphire-journal embedding show`. A `[cache.retrieve]` section left over
+# `sapphire-bridge embedding show`. A `[cache.retrieve]` section left over
 # from an older version is ignored.
 
 # ── Periodic re-scan ─────────────────────────────────────────────────────────
