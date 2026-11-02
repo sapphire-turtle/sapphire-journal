@@ -84,11 +84,21 @@ PATH: the desktop app's binary also runs every command of the headless one (`ser
 
 | Edition | For | How |
 |---|---|---|
-| Desktop app (`sapphire-journal-desktop`) | Everyday use, with the GUI | Installer for Windows, macOS and Linux (in preparation) |
+| Desktop app (`sapphire-journal-desktop`) | Everyday use, with the GUI | Installer for Windows, macOS and Linux |
 | Headless (`sapphire-journal-headless`) | Hosts and servers without a GUI | Install script, cargo-binstall or cargo |
 
 Installing both leaves two `sapphire-journal` commands; `sapphire-journal status` warns
 when the one on PATH is not the one you ran.
+
+### Desktop app: installer
+
+Download the installer for your platform from the [latest release](https://github.com/sapphire-turtle/sapphire-journal/releases/latest):
+`sapphire-journal-desktop-win-Setup.exe` (Windows), `sapphire-journal-desktop-osx-Setup.pkg` (macOS) or
+`sapphire-journal-desktop.AppImage` (Linux). It puts `sapphire-journal` on your `PATH` and keeps itself up to
+date; its first start asks to keep the app server running in the background, for the MCP
+server and HTTP clients while the window is closed. Sync goes through Sapphire Bridge,
+which has an installer of its own on
+[sapphire-framework's latest release](https://github.com/sapphire-turtle/sapphire-framework/releases/latest) (`sapphire-bridge-desktop-*`).
 
 ### Headless: install script
 

@@ -81,11 +81,21 @@ event:
 
 | 版 | 用途 | 入れ方 |
 |---|---|---|
-| デスクトップ版（`sapphire-journal-desktop`） | GUI を使うふだんの利用 | Windows・macOS・Linux のインストーラー（準備中） |
+| デスクトップ版（`sapphire-journal-desktop`） | GUI を使うふだんの利用 | Windows・macOS・Linux のインストーラー |
 | ヘッドレス版（`sapphire-journal-headless`） | GUI のないホストやサーバー | インストールスクリプト、cargo-binstall、cargo |
 
 両方を入れると `sapphire-journal` が2つになります。PATH 上のものが実行したものと違うときは、
 `sapphire-journal status` が警告します。
+
+### デスクトップ版：インストーラー
+
+[最新のリリース](https://github.com/sapphire-turtle/sapphire-journal/releases/latest)から、お使いの OS のインストーラーをダウンロードしてください。
+Windows は `sapphire-journal-desktop-win-Setup.exe`、macOS は `sapphire-journal-desktop-osx-Setup.pkg`、
+Linux は `sapphire-journal-desktop.AppImage` です。PATH に `sapphire-journal` を置き、自分で最新版に更新します。
+初回の起動時に、ウィンドウを閉じている間も MCP サーバーや HTTP のクライアントが使えるよう、
+アプリサーバーをバックグラウンドで動かし続けるかを尋ねます。同期は Sapphire Bridge を通るので、
+[sapphire-framework の最新のリリース](https://github.com/sapphire-turtle/sapphire-framework/releases/latest)にある Sapphire Bridge のインストーラー
+（`sapphire-bridge-desktop-*`）も入れてください。
 
 ### ヘッドレス版：インストールスクリプト
 

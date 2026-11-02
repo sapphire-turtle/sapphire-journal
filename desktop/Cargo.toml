@@ -10,6 +10,22 @@ license-file = "LICENSE"
 repository.workspace = true
 publish = false
 
+[[bin]]
+name = "sapphire-journal-desktop"
+path = "src/main.rs"
+
+# The Windows console shim the package puts on `PATH` as `sapphire-journal.exe`
+# (src/bin/console.rs).
+[[bin]]
+name = "sapphire-journal-console"
+path = "src/bin/console.rs"
+required-features = ["velopack"]
+
+[features]
+# The release workflow's build: the Velopack package's start, its updater, its first run
+# and its service (src/package.rs). `cargo build` makes the plain binary.
+velopack = ["sapphire-framework/package"]
+
 [dependencies]
 # Every command but the window — `serve`, `mcp`, `entry`, `status`, … — runs the
 # CLI's own code, so this one binary does all the CLI does.
@@ -22,7 +38,10 @@ sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "4
 sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.3.0" }
 # `eframe`: `gui::app::run` starts the window, and `gui::{eframe, egui}` are the
 # versions it renders with.
-sapphire-framework = { workspace = true, features = ["eframe", "ipc"] }
+sapphire-framework = { workspace = true, features = ["eframe", "ipc", "server"] }
+# The window's icon and app-menu entry (`LauncherSpec`'s icon), and whether this runs in a
+# package; the framework's version of it.
+corundum-framework-platform = "0.7.0"
 egui_extras = { version = "0.37", features = ["svg"] }
 grain-id = { version = "0.15" }
 serde = { workspace = true }

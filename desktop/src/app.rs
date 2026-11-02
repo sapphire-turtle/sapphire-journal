@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 
 use chrono::NaiveDate;
 use grain_id::GrainId;
-use sapphire_framework::gui::client::FrameworkClient;
 use sapphire_framework::gui::{
     Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
 };
@@ -37,11 +36,11 @@ impl Window {
     pub fn new(
         api: Api,
         replies: mpsc::Receiver<Reply>,
-        framework: FrameworkClient,
+        settings: FrameworkSettings,
         data_dir: PathBuf,
     ) -> Self {
         let journal_settings = Rc::new(RefCell::new(SettingsPanelState::open()));
-        let settings = FrameworkSettings::new(framework).with_app_sections(
+        let settings = settings.with_app_sections(
             "Journal",
             vec![Box::new(JournalSettingsPage::new(
                 Rc::clone(&journal_settings),
