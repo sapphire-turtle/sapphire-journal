@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-core-v0.14.0...sapphire-journal-core-v0.15.0) - 2026-11-03
 
-### Other
+### Changed
 
-- [**breaking**] follow sapphire-framework 0.24
+- **Breaking:** sapphire-framework 0.26
 
 ## [0.14.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-core-v0.13.0...sapphire-journal-core-v0.14.0) - 2026-10-25
 

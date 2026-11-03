@@ -8,15 +8,7 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ### Added
 
-- [**breaking**] one desktop binary that runs the CLI too; headless, cli and server crates
-
-### Fixed
-
-- name each edition's releases, so update installs them
-
-### Other
-
-- [**breaking**] follow sapphire-framework 0.24
+- **Breaking:** one desktop binary that runs the CLI too; headless, cli and server crates
 
 ### Changed
 
@@ -25,7 +17,11 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
   - Every key has a profile (`read-only`, `read-write`, `admin`), and `api-key add` requires `--profile`. Existing keys become **read-only**: they may call only the read-only MCP tools (`entry_list`, `entry_tree`, `entry_show`, `entry_check`, `cache_info` and the framework's), so an agent that writes needs a new key, `sapphire-journal api-key add <name> --profile read-write`.
   - `workgroup`, `device` and `embedding` are removed: use `sapphire-bridge workgroup|device|embedding`. `sapphire-bridge` 0.24 is needed alongside (its crate is now `sapphire-bridge-headless`).
   - Windows: settings and data move from `%APPDATA%` to `%LOCALAPPDATA%\sapphire-journal` on the first start; macOS: the service's LaunchAgent label becomes `org.sapphire-turtle.sapphire-journal` (an old agent is moved by `service install`/`uninstall`/`status`).
+- **Breaking:** sapphire-framework 0.26: `workspace init` and `select` without a directory use the app's default workspace, `<data dir>/workspaces/default`, not the current directory; pass `.` for the old behaviour.
 
+### Fixed
+
+- name each edition's releases, so update installs them
 
 ## [0.14.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.13.0...v0.14.0) - 2026-10-25
 

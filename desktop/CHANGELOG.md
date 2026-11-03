@@ -7,30 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.3.0...v0.15.0) - 2026-11-03
+## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/compare/desktop-v0.3.0...v0.15.0) - 2026-11-03
 
 ### Added
 
-- *(desktop)* [**breaking**] package with cargo-packager instead of Velopack ([#353](https://github.com/sapphire-turtle/sapphire-journal/pull/353))
-- *(desktop)* ship Sapphire Journal as a Velopack package
-- [**breaking**] one desktop binary that runs the CLI too; headless, cli and server crates
-- *(desktop)* edit the open entry in the shell's side pane
-
-### Fixed
-
-- name each edition's releases, so update installs them
-
-### Other
-
-- [**breaking**] follow sapphire-framework 0.24
-- call the shared workflows from sapphire-turtle/.github@v1
-- the filled app icon
-- add the app icon and show it in the README
+- **Breaking:** Sapphire Journal is distributed as an installer per OS, made with cargo-packager ([#353](https://github.com/sapphire-turtle/sapphire-journal/pull/353)): `sapphire-journal-desktop_<version>_x64-setup.exe`, `_aarch64.dmg` and `_x86_64.AppImage`. The installed app updates itself from the latest release, checking each update's signature first.
+- **Breaking:** one desktop binary that runs the CLI too; headless, cli and server crates
+- edit the open entry in the shell's side pane
+- the app icon
 
 ### Changed
 
 - [**breaking**] follow sapphire-framework 0.24: Settings has an API keys page (keys kept in the journal, each with a profile; existing keys become read-only) and links to the Sapphire Bridge window for the workgroup, devices and embedding.
+- **Breaking:** sapphire-framework 0.26: `workspace init` and `select` without a directory use the app's default workspace, `<data dir>/workspaces/default`, not the current directory; pass `.` for the old behaviour.
 
+### Fixed
+
+- name each edition's releases, so update installs them
 
 ## [0.3.0](https://github.com/sapphire-turtle/sapphire-journal/compare/desktop-v0.2.0...desktop-v0.3.0) - 2026-10-25
 
