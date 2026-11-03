@@ -11,9 +11,9 @@ categories = ["command-line-utilities", "text-processing"]
 keywords = ["markdown", "task-management", "notes", "cli", "mcp"]
 
 [dependencies]
-sapphire-journal-core = { path = "../sapphire-journal-core", version = "0.14.0", features = ["text-input"] }
+sapphire-journal-core = { path = "../sapphire-journal-core", version = "0.15.0", features = ["text-input"] }
 sapphire-journal-api  = { path = "../sapphire-journal-api",  version = "4.0.0" }
-sapphire-journal-mcp  = { path = "../sapphire-journal-mcp", version = "0.3.0" }
+sapphire-journal-mcp  = { path = "../sapphire-journal-mcp", version = "0.4.0" }
 sapphire-journal-server = { path = "../sapphire-journal-server", version = "0.15.0" }
 sapphire-framework = { workspace = true, features = ["server", "ipc", "mcp"] }
 clap.workspace = true
