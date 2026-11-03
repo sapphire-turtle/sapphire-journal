@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.3.0...v0.15.0) - 2026-11-03
+
+### Added
+
+- *(desktop)* [**breaking**] package with cargo-packager instead of Velopack ([#353](https://github.com/sapphire-turtle/sapphire-journal/pull/353))
+- *(desktop)* ship Sapphire Journal as a Velopack package
+- [**breaking**] one desktop binary that runs the CLI too; headless, cli and server crates
+- *(desktop)* edit the open entry in the shell's side pane
+
+### Fixed
+
+- name each edition's releases, so update installs them
+
+### Other
+
+- [**breaking**] follow sapphire-framework 0.24
+- call the shared workflows from sapphire-turtle/.github@v1
+- the filled app icon
+- add the app icon and show it in the README
+
 ### Changed
 
 - [**breaking**] follow sapphire-framework 0.24: Settings has an API keys page (keys kept in the journal, each with a profile; existing keys become read-only) and links to the Sapphire Bridge window for the workgroup, devices and embedding.

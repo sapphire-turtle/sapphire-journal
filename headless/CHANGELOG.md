@@ -4,6 +4,20 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/releases/tag/v0.15.0) - 2026-11-03
+
+### Added
+
+- [**breaking**] one desktop binary that runs the CLI too; headless, cli and server crates
+
+### Fixed
+
+- name each edition's releases, so update installs them
+
+### Other
+
+- [**breaking**] follow sapphire-framework 0.24
+
 ### Changed
 
 - [**breaking**] follow sapphire-framework 0.24:

@@ -14,9 +14,9 @@ default = ["redb-store"]
 redb-store = ["sapphire-framework/redb-store"]
 
 [dependencies]
-sapphire-journal-core = { path = "../sapphire-journal-core", version = "0.14.0" }
+sapphire-journal-core = { path = "../sapphire-journal-core", version = "0.15.0" }
 sapphire-journal-api  = { path = "../sapphire-journal-api",  version = "4.0.0" }
-sapphire-journal-mcp  = { path = "../sapphire-journal-mcp", version = "0.3.0" }
+sapphire-journal-mcp  = { path = "../sapphire-journal-mcp", version = "0.4.0" }
 sapphire-framework = { workspace = true, features = ["server", "ipc", "mcp"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
 serde.workspace = true
