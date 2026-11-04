@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.15.0...v0.15.1) - 2026-11-04
+
+### Fixed
+
+- *(deps)* sapphire-framework 0.27.1 and corundum 0.9.1 (Windows service install) ([#354](https://github.com/sapphire-turtle/sapphire-journal/pull/354))
+
 ## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/compare/desktop-v0.3.0...v0.15.0) - 2026-11-03
 
 ### Added

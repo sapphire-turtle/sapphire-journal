@@ -4,6 +4,12 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [Unreleased]
 
+## [0.15.1](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.15.0...v0.15.1) - 2026-11-04
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/releases/tag/v0.15.0) - 2026-11-03
 
 ### Added

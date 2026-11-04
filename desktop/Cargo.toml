@@ -2,7 +2,7 @@
 name = "sapphire-journal-desktop"
 # Released together with `sapphire-journal-headless`, under its `v{version}`
 # tags (release-plz.toml).
-version = "0.15.0"
+version = "0.15.1"
 authors = ["fluo10 <fluo10@fireturtle.net>"]
 edition.workspace = true
 description.workspace = true
@@ -29,13 +29,13 @@ package = ["sapphire-framework/package"]
 [dependencies]
 # Every command but the window — `serve`, `mcp`, `entry`, `status`, … — runs the
 # CLI's own code, so this one binary does all the CLI does.
-sapphire-journal-cli  = { path = "../crates/sapphire-journal-cli", version = "0.15.0" }
+sapphire-journal-cli  = { path = "../crates/sapphire-journal-cli", version = "0.15.1" }
 # The entry types the server's answers deserialize into, and the methods'
 # parameters and names. The window reads nothing from the journal itself:
 # it is a client of the `sapphire-journal` server.
-sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.15.0" }
+sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.15.1" }
 sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "4.0.0" }
-sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.4.0" }
+sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.4.1" }
 # `eframe`: `gui::app::run` starts the window, and `gui::{eframe, egui}` are the
 # versions it renders with.
 sapphire-framework = { workspace = true, features = ["eframe", "ipc", "server"] }
