@@ -6,9 +6,9 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [0.15.1](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.15.0...v0.15.1) - 2026-11-04
 
-### Other
+### Fixed
 
-- update Cargo.lock dependencies
+- On Windows, `service install` no longer fails with "access is denied": the service is now a logon task for the installing user, which needs no administrator (sapphire-framework 0.27.1, corundum 0.9.1, sapphire-turtle/corundum-framework#105) ([#354](https://github.com/sapphire-turtle/sapphire-journal/pull/354))
 
 ## [0.15.0](https://github.com/sapphire-turtle/sapphire-journal/releases/tag/v0.15.0) - 2026-11-03
 
