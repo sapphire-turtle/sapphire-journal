@@ -4,6 +4,12 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.15.1...v0.16.0) - 2026-11-06
+
+### Other
+
+- *(deps)* [**breaking**] sapphire-framework 0.28, corundum-framework 0.11
+
 ### Changed
 
 - **Breaking:** sapphire-framework 0.28, corundum-framework 0.11: `update` installs only a release file signed with sapphire-turtle's key, and refuses one without a valid signature (sapphire-turtle/sapphire-framework#402).
