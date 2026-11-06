@@ -60,6 +60,8 @@ const LAUNCHER: LauncherSpec = LauncherSpec {
     description: "Tasks, events and notes in Markdown files",
     category: "Office",
     icon_svg: include_bytes!("../../docs/icon.svg"),
+    // The mark on the brand's tile, on the macOS icon grid, as the package's icns.
+    macos_icon_svg: Some(include_bytes!("../../docs/icon-macos.svg")),
     bundle_prefix: "org.sapphire-turtle",
 };
 
@@ -206,5 +208,12 @@ mod tests {
             include_bytes!("../../docs/icon.svg").as_slice()
         );
         assert!(corundum_framework_platform::icon::render_rgba(LAUNCHER.icon_svg, 64).is_ok());
+        // The app bundle's icon on macOS: the mark on the brand's tile, as the icns.
+        let macos = LAUNCHER.macos_icon_svg.expect("a macOS icon");
+        assert_eq!(
+            macos,
+            include_bytes!("../../docs/icon-macos.svg").as_slice()
+        );
+        assert!(corundum_framework_platform::icon::render_rgba(macos, 64).is_ok());
     }
 }
