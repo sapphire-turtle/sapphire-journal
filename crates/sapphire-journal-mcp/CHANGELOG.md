@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-mcp-v0.4.1...sapphire-journal-mcp-v0.4.2) - 2026-11-06
+
+### Changed
+
+- sapphire-framework 0.28 (sapphire-turtle/sapphire-framework#402).
+
 ## [0.4.1](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-mcp-v0.4.0...sapphire-journal-mcp-v0.4.1) - 2026-11-04
 
 ### Other
