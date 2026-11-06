@@ -11,24 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(desktop)* the macOS icon on the brand's tile
-
-### Fixed
-
-- *(desktop)* the Windows executable carries the app icon, in the brand colour
-
-### Other
-
-- *(deps)* [**breaking**] sapphire-framework 0.28, corundum-framework 0.11
-- Merge origin/main into fix/windows-exe-icon
-
-### Added
-
 - On macOS, the app bundle added to the app menu has the mark on the brand's tile as its icon, as the package's icns, rather than the bare mark on the system's plate.
 
 ### Changed
 
 - **Breaking:** sapphire-framework 0.28, corundum-framework 0.11: `update` and the window's update panel install only a release file signed with sapphire-turtle's key, and refuse one without a valid signature (sapphire-turtle/sapphire-framework#402).
+- Each release file — the bare binaries for servers, the install script and `cargo binstall` — comes with its `<file>.sig`, made with sapphire-turtle's minisign key, which `update` checks (sapphire-turtle/sapphire-framework#402).
+
+### Fixed
+
+- On Windows, `sapphire-journal-desktop.exe` carries the app icon, in the brand colour, so Explorer and the taskbar show Sapphire Journal's icon rather than a generic one.
 
 ## [0.15.1](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.15.0...v0.15.1) - 2026-11-04
 
