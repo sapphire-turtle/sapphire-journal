@@ -19,6 +19,9 @@
 pub use grain_id::GrainId;
 pub use sapphire_server_api as server;
 
+mod date_or_time;
+pub use date_or_time::DateOrTime;
+
 mod entry;
 pub use entry::{
     Entry, EntryHeader, EventMeta, EventMetaView, Frontmatter, FrontmatterView, TaskMeta,
