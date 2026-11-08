@@ -16,6 +16,7 @@ use crate::api::{Api, Change, Reply};
 use crate::icons;
 use crate::period_nav::period_string;
 use crate::screens;
+use crate::screens::desktop_settings::DesktopSettingsPage;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
 use crate::settings::{ListLayout, MainView, Settings};
 
@@ -41,12 +42,16 @@ impl Window {
         data_dir: PathBuf,
     ) -> Self {
         let journal_settings = Rc::new(RefCell::new(SettingsPanelState::open()));
+        let ui_settings = Rc::new(RefCell::new(Settings::load(&data_dir)));
         let settings = settings.with_app_sections(
             "Journal",
-            vec![Box::new(JournalSettingsPage::new(
-                Rc::clone(&journal_settings),
-                api.clone(),
-            ))],
+            vec![
+                Box::new(JournalSettingsPage::new(
+                    Rc::clone(&journal_settings),
+                    api.clone(),
+                )),
+                Box::new(DesktopSettingsPage::new(Rc::clone(&ui_settings))),
+            ],
         );
         let mut shell = Shell::new(
             vec![
@@ -55,7 +60,7 @@ impl Window {
             ],
             settings,
         );
-        let app = App::new(api, replies, journal_settings, data_dir);
+        let app = App::new(api, replies, journal_settings, ui_settings);
         // Open on the view last used.
         shell.open(app.home.view);
         Self { shell, app }
@@ -107,7 +112,9 @@ impl eframe::App for Window {
             ui.ctx().request_repaint();
         }
         // Remember the view picked on the rail, and the list's layout.
-        let (settings, home) = (&mut self.app.settings, &mut self.app.home);
+        // Borrowed only here, after the shell has drawn the settings pages.
+        let mut settings = self.app.settings.borrow_mut();
+        let home = &mut self.app.home;
         let period = period_string(home.period.as_ref());
         if settings.view != home.view
             || settings.list_layout != home.list_layout
@@ -120,6 +127,7 @@ impl eframe::App for Window {
                 home.error_msg = Some(format!("Failed to save settings: {e}"));
             }
         }
+        drop(settings);
         if std::mem::take(&mut self.app.open_settings) {
             self.shell.open_settings();
         }
@@ -149,7 +157,7 @@ impl ShellApp<MainView> for App {
 /// The journal: a client of the `sapphire-journal` server, so it shows the
 /// journal the server serves.
 pub struct App {
-    pub settings: Settings,
+    pub settings: Rc<RefCell<Settings>>,
     pub home: HomeState,
     /// The journal's page in Settings, filled from the server's answers.
     pub journal_settings: Rc<RefCell<SettingsPanelState>>,
@@ -393,10 +401,9 @@ impl App {
         api: Api,
         replies: mpsc::Receiver<Reply>,
         journal_settings: Rc<RefCell<SettingsPanelState>>,
-        data_dir: PathBuf,
+        settings: Rc<RefCell<Settings>>,
     ) -> Self {
-        let settings = Settings::load(&data_dir);
-        let mut home = HomeState::new(api.clone(), &settings);
+        let mut home = HomeState::new(api.clone(), &settings.borrow());
         home.reload();
         api.settings();
         Self {
