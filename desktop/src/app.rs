@@ -5,16 +5,19 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use chrono::NaiveDate;
+use corundum_framework_gui::datetime::Period;
 use grain_id::GrainId;
 use sapphire_framework::gui::{
-    Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
+    Action, Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
 };
+use sapphire_journal_api::DateOrTime;
 use sapphire_journal_core::entry::{Entry, EntryHeader};
 
 use crate::api::{Api, Change, Reply};
 use crate::icons;
+use crate::period_nav::period_string;
 use crate::screens;
+use crate::screens::desktop_settings::DesktopSettingsPage;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
 use crate::settings::{ListLayout, MainView, Settings};
 
@@ -40,12 +43,16 @@ impl Window {
         data_dir: PathBuf,
     ) -> Self {
         let journal_settings = Rc::new(RefCell::new(SettingsPanelState::open()));
+        let ui_settings = Rc::new(RefCell::new(Settings::load(&data_dir)));
         let settings = settings.with_app_sections(
             "Journal",
-            vec![Box::new(JournalSettingsPage::new(
-                Rc::clone(&journal_settings),
-                api.clone(),
-            ))],
+            vec![
+                Box::new(JournalSettingsPage::new(
+                    Rc::clone(&journal_settings),
+                    api.clone(),
+                )),
+                Box::new(DesktopSettingsPage::new(Rc::clone(&ui_settings))),
+            ],
         );
         let mut shell = Shell::new(
             vec![
@@ -53,8 +60,9 @@ impl Window {
                 Destination::new(MainView::Kanban, icons::kanban(), "Kanban"),
             ],
             settings,
-        );
-        let app = App::new(api, replies, journal_settings, data_dir);
+        )
+        .with_actions(vec![Action::new("new_entry", icons::plus(), "New entry")]);
+        let app = App::new(api, replies, journal_settings, ui_settings);
         // Open on the view last used.
         shell.open(app.home.view);
         Self { shell, app }
@@ -106,14 +114,22 @@ impl eframe::App for Window {
             ui.ctx().request_repaint();
         }
         // Remember the view picked on the rail, and the list's layout.
-        let (settings, home) = (&mut self.app.settings, &mut self.app.home);
-        if settings.view != home.view || settings.list_layout != home.list_layout {
+        // Borrowed only here, after the shell has drawn the settings pages.
+        let mut settings = self.app.settings.borrow_mut();
+        let home = &mut self.app.home;
+        let period = period_string(home.period.as_ref());
+        if settings.view != home.view
+            || settings.list_layout != home.list_layout
+            || settings.last_period.as_deref() != Some(period.as_str())
+        {
             settings.view = home.view;
             settings.list_layout = home.list_layout;
+            settings.last_period = Some(period);
             if let Err(e) = settings.save() {
                 home.error_msg = Some(format!("Failed to save settings: {e}"));
             }
         }
+        drop(settings);
         if std::mem::take(&mut self.app.open_settings) {
             self.shell.open_settings();
         }
@@ -138,12 +154,19 @@ impl ShellApp<MainView> for App {
         }
         self.home.apply_pane_request(side);
     }
+
+    fn action(&mut self, id: &'static str, side: &mut Side) {
+        if id == "new_entry" {
+            self.home.new_entry(None);
+            self.home.apply_pane_request(side);
+        }
+    }
 }
 
 /// The journal: a client of the `sapphire-journal` server, so it shows the
 /// journal the server serves.
 pub struct App {
-    pub settings: Settings,
+    pub settings: Rc<RefCell<Settings>>,
     pub home: HomeState,
     /// The journal's page in Settings, filled from the server's answers.
     pub journal_settings: Rc<RefCell<SettingsPanelState>>,
@@ -190,13 +213,8 @@ pub struct HomeState {
 
     // ── Filter / sort state ─────────────────────────────────────────────────
     pub filter_text: String,
-    /// Active period filter, a [`sapphire_journal_core::period`] string:
-    /// the period picker writes `YYYY`, `YYYY-MM`, `YYYY-Www`, `YYYY-MM-DD`
-    /// or `today`, and the field takes any alias the CLI does. Empty = no
-    /// filter (all entries).
-    pub period: String,
-    /// The month the period picker shows.
-    pub calendar_cursor: NaiveDate,
+    /// The shared period the views show; `None` = all entries.
+    pub period: Option<Period>,
     /// Sort field. One of "updated_at" | "created_at" | "title" | "id"
     /// | "task_due" | "event_start".
     pub sort_by: String,
@@ -260,8 +278,7 @@ impl HomeState {
             show_filters: false,
             pane_request: None,
             filter_text: String::new(),
-            period: String::new(),
-            calendar_cursor: chrono::Local::now().date_naive(),
+            period: settings.initial_period(chrono::Local::now().date_naive()),
             sort_by: "updated_at".to_string(),
             sort_order: "desc".to_string(),
             confirm_delete: None,
@@ -381,11 +398,11 @@ pub struct EditorState {
     pub body: String,
     pub has_task: bool,
     pub task_status: String,
-    /// `YYYY-MM-DD` (empty = no due date).
-    pub task_due: String,
+    /// `None` = no due date.
+    pub task_due: Option<DateOrTime>,
     pub has_event: bool,
-    pub event_start: String,
-    pub event_end: String,
+    pub event_start: DateOrTime,
+    pub event_end: DateOrTime,
 }
 
 impl App {
@@ -393,10 +410,9 @@ impl App {
         api: Api,
         replies: mpsc::Receiver<Reply>,
         journal_settings: Rc<RefCell<SettingsPanelState>>,
-        data_dir: PathBuf,
+        settings: Rc<RefCell<Settings>>,
     ) -> Self {
-        let settings = Settings::load(&data_dir);
-        let mut home = HomeState::new(api.clone(), &settings);
+        let mut home = HomeState::new(api.clone(), &settings.borrow());
         home.reload();
         api.settings();
         Self {

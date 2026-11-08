@@ -1,3 +1,4 @@
+pub mod desktop_settings;
 pub mod entry_pane;
 pub mod journal_home;
 pub mod kanban;

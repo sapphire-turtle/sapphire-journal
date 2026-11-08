@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The period at the top of the window is picked with a calendar popup, and ◀ ▶ beside it step it back and forward by a day, week, month or year.
+- Settings → Desktop sets the period the window opens on: the last one shown (the default), today, this week or this month.
+- A "New entry" button on the rail opens a new entry in the side pane from any view.
+- Due, start and end in the side pane have an "All day" switch.
+
 ### Changed
 
 - **Breaking:** an event's start and end and a task's due take either a date, meaning all day, or a date and time. `--task-due 2026-11-08` and `--event-start 2026-11-08` (and the MCP tools' `task_due`, `event_start`, `event_end`) are now kept as the date alone, written `due: "2026-11-08"`, not turned into `T23:59` or `T00:00`. A date-only due is overdue from the day after. JSON output gives such a value as `"2026-11-08"`. Entries already written with times are kept as they are. The cache is rebuilt once on first start.
