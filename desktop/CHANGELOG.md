@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings → Desktop sets the period the window opens on: the last one shown (the default), today, this week or this month.
 - A "New entry" button on the rail opens a new entry in the side pane from any view.
 - Due, start and end in the side pane have an "All day" switch.
+- A Calendar view on the rail shows the events and the tasks with a due date in the period: a day or a week as a time grid, a month as a month grid, and a year, a custom range or all as one row per day. Clicking an item opens it in the side pane; clicking a date shows that day.
 
 ### Changed
 
