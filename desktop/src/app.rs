@@ -10,6 +10,7 @@ use grain_id::GrainId;
 use sapphire_framework::gui::{
     Action, Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
 };
+use sapphire_journal_api::DateOrTime;
 use sapphire_journal_core::entry::{Entry, EntryHeader};
 
 use crate::api::{Api, Change, Reply};
@@ -397,11 +398,11 @@ pub struct EditorState {
     pub body: String,
     pub has_task: bool,
     pub task_status: String,
-    /// `YYYY-MM-DD` (empty = no due date).
-    pub task_due: String,
+    /// `None` = no due date.
+    pub task_due: Option<DateOrTime>,
     pub has_event: bool,
-    pub event_start: String,
-    pub event_end: String,
+    pub event_start: DateOrTime,
+    pub event_end: DateOrTime,
 }
 
 impl App {

@@ -14,7 +14,7 @@ use sapphire_journal_core::{entry::Entry, entry::EntryHeader, labels::EntryFlag}
 use crate::app::{EditorState, HomeState};
 use crate::icons;
 use crate::widgets::buttons::{icon_btn, icon_text_btn};
-use crate::widgets::date_picker::date_picker_button;
+use crate::widgets::date_or_time::{date_or_time_input, set_due_all_day, set_event_all_day};
 
 /// Draw the pane for the open entry into `ui`.
 pub fn show(home: &mut HomeState, ui: &mut egui::Ui) {
@@ -321,14 +321,20 @@ fn draw_form(home: &mut HomeState, ui: &mut egui::Ui) {
                                 });
                         });
                         ui.vertical(|ui| {
-                            ui.label("Due (YYYY-MM-DD)");
+                            let mut has_due = editor.task_due.is_some();
                             ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut editor.task_due)
-                                        .hint_text("2026-05-16")
-                                        .desired_width(120.0),
-                                );
-                                date_picker_button(ui, "task_due", &mut editor.task_due);
+                                if ui.checkbox(&mut has_due, "Due").changed() {
+                                    editor.task_due = has_due.then(|| {
+                                        DateOrTime::Date(chrono::Local::now().date_naive())
+                                    });
+                                }
+                                if let Some(due) = editor.task_due.as_mut() {
+                                    date_or_time_input(ui, "task_due", due);
+                                    let mut all_day = due.is_date();
+                                    if ui.checkbox(&mut all_day, "All day").changed() {
+                                        set_due_all_day(due, all_day);
+                                    }
+                                }
                             });
                         });
                     });
@@ -342,25 +348,22 @@ fn draw_form(home: &mut HomeState, ui: &mut egui::Ui) {
                 ui.checkbox(&mut editor.has_event, "Event");
                 if editor.has_event {
                     ui.horizontal_wrapped(|ui| {
+                        let mut all_day =
+                            editor.event_start.is_date() && editor.event_end.is_date();
+                        if ui.checkbox(&mut all_day, "All day").changed() {
+                            set_event_all_day(
+                                &mut editor.event_start,
+                                &mut editor.event_end,
+                                all_day,
+                            );
+                        }
                         ui.vertical(|ui| {
-                            ui.label("Start (YYYY-MM-DD)");
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut editor.event_start)
-                                        .desired_width(120.0),
-                                );
-                                date_picker_button(ui, "event_start", &mut editor.event_start);
-                            });
+                            ui.label("Start");
+                            date_or_time_input(ui, "event_start", &mut editor.event_start);
                         });
                         ui.vertical(|ui| {
-                            ui.label("End (YYYY-MM-DD)");
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut editor.event_end)
-                                        .desired_width(120.0),
-                                );
-                                date_picker_button(ui, "event_end", &mut editor.event_end);
-                            });
+                            ui.label("End");
+                            date_or_time_input(ui, "event_end", &mut editor.event_end);
                         });
                     });
                 }
@@ -385,6 +388,7 @@ pub const TASK_STATUS_OPTIONS: &[&str] = &["open", "in_progress", "done", "cance
 /// The editor's form for an entry the server returned.
 pub fn editor_for(entry: Entry) -> EditorState {
     let fm = &entry.frontmatter;
+    let today = DateOrTime::Date(chrono::Local::now().date_naive());
     EditorState {
         id: fm.id.to_string(),
         title: fm.title.clone(),
@@ -396,23 +400,10 @@ pub fn editor_for(entry: Entry) -> EditorState {
             .as_ref()
             .map(|t| t.status.clone())
             .unwrap_or_else(|| "open".to_string()),
-        task_due: fm
-            .task
-            .as_ref()
-            .and_then(|t| t.due)
-            .map(|d| d.to_string())
-            .unwrap_or_default(),
+        task_due: fm.task.as_ref().and_then(|t| t.due),
         has_event: fm.event.is_some(),
-        event_start: fm
-            .event
-            .as_ref()
-            .map(|e| e.start.to_string())
-            .unwrap_or_default(),
-        event_end: fm
-            .event
-            .as_ref()
-            .map(|e| e.end.to_string())
-            .unwrap_or_default(),
+        event_start: fm.event.as_ref().map_or(today, |e| e.start),
+        event_end: fm.event.as_ref().map_or(today, |e| e.end),
         base: entry,
     }
 }
@@ -435,27 +426,17 @@ impl EditorState {
 
 /// Write the form over the entry it was loaded from and send it to the
 /// server, which saves it, normalizes it and answers with its path.
-/// `false` (with the reason in `error_msg`) when the form does not make an
-/// entry.
 pub fn save_current_entry(home: &mut HomeState) -> bool {
     let Some(editor) = home.editor.as_ref() else {
         return false;
     };
     home.error_msg = None;
     home.info_msg = None;
-    match entry_from_editor(editor) {
-        Ok(entry) => {
-            home.api.save(entry);
-            true
-        }
-        Err(msg) => {
-            home.error_msg = Some(msg);
-            false
-        }
-    }
+    home.api.save(entry_from_editor(editor));
+    true
 }
 
-fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
+fn entry_from_editor(editor: &EditorState) -> Entry {
     let mut entry = editor.base.clone();
     entry.frontmatter.title = editor.title.clone();
     entry.frontmatter.tags = editor
@@ -467,17 +448,6 @@ fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
     entry.body = editor.body.clone();
 
     if editor.has_task {
-        let due = if editor.task_due.trim().is_empty() {
-            None
-        } else {
-            Some(
-                editor
-                    .task_due
-                    .trim()
-                    .parse::<DateOrTime>()
-                    .map_err(|e| format!("task.due: {e}"))?,
-            )
-        };
         let status = if editor.task_status.is_empty() {
             "open".to_string()
         } else {
@@ -485,7 +455,7 @@ fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
         };
         let prev = entry.frontmatter.task.take();
         entry.frontmatter.task = Some(sapphire_journal_core::entry::TaskMeta {
-            due,
+            due: editor.task_due,
             status,
             started_at: prev.as_ref().and_then(|t| t.started_at),
             closed_at: prev.as_ref().and_then(|t| t.closed_at),
@@ -496,33 +466,75 @@ fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
     }
 
     if editor.has_event {
-        if editor.event_start.trim().is_empty() && editor.event_end.trim().is_empty() {
-            return Err("event requires a start or end date".to_string());
-        }
-        let start_str = if editor.event_start.trim().is_empty() {
-            editor.event_end.trim()
-        } else {
-            editor.event_start.trim()
-        };
-        let end_str = if editor.event_end.trim().is_empty() {
-            editor.event_start.trim()
-        } else {
-            editor.event_end.trim()
-        };
-        let start = start_str
-            .parse::<DateOrTime>()
-            .map_err(|e| format!("event.start: {e}"))?;
-        let end = end_str
-            .parse::<DateOrTime>()
-            .map_err(|e| format!("event.end: {e}"))?;
         let prev = entry.frontmatter.event.take();
         entry.frontmatter.event = Some(sapphire_journal_core::entry::EventMeta {
-            start,
-            end,
+            start: editor.event_start,
+            end: editor.event_end,
             extra: prev.map(|e| e.extra).unwrap_or_default(),
         });
     } else {
         entry.frontmatter.event = None;
     }
-    Ok(entry)
+    entry
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+    use sapphire_journal_core::entry::Frontmatter;
+
+    fn entry() -> Entry {
+        let now = NaiveDate::from_ymd_opt(2026, 11, 8)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
+        Entry {
+            path: "e.md".into(),
+            frontmatter: Frontmatter {
+                id: grain_id::GrainId::now_unix(),
+                parent_id: None,
+                title: "t".into(),
+                slug: String::new(),
+                created_at: now,
+                updated_at: now,
+                tags: Vec::new(),
+                task: None,
+                event: None,
+                hidden: None,
+                extra: Default::default(),
+            },
+            body: String::new(),
+        }
+    }
+
+    fn due_source(due: DateOrTime) -> String {
+        let mut editor = editor_for(entry());
+        editor.has_task = true;
+        editor.task_due = Some(due);
+        sapphire_journal_core::parser::render_entry(&entry_from_editor(&editor))
+    }
+
+    #[test]
+    fn date_only_due_is_written_without_a_time() {
+        let day = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+        let source = due_source(DateOrTime::Date(day));
+        assert!(
+            source.contains("due: 2026-11-08\n")
+                || source.contains("due: '2026-11-08'\n")
+                || source.contains("due: \"2026-11-08\"\n"),
+            "{source}"
+        );
+        assert!(!source.contains("T00:00"), "{source}");
+    }
+
+    #[test]
+    fn timed_due_is_written_with_its_time() {
+        let dt = NaiveDate::from_ymd_opt(2026, 11, 8)
+            .unwrap()
+            .and_hms_opt(9, 0, 0)
+            .unwrap();
+        let source = due_source(DateOrTime::DateTime(dt));
+        assert!(source.contains("2026-11-08T09:00"), "{source}");
+    }
 }
