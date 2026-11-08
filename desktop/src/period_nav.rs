@@ -54,6 +54,14 @@ mod tests {
     }
 
     #[test]
+    fn shift_day_across_leap_february() {
+        let feb28 = Period::Day(d(2028, 2, 28));
+        let feb29 = shift(&feb28, 1);
+        assert_eq!(feb29, Some(Period::Day(d(2028, 2, 29))));
+        assert_eq!(shift(&feb29.unwrap(), 1), Some(Period::Day(d(2028, 3, 1))));
+    }
+
+    #[test]
     fn shift_day() {
         assert_eq!(
             shift(&Period::Day(d(2026, 12, 31)), 1),

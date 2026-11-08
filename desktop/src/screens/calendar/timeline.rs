@@ -7,7 +7,7 @@ use chrono::{Local, NaiveDate, NaiveDateTime, Timelike};
 use corundum_framework_gui::datetime::Period;
 use sapphire_framework::gui::egui;
 
-use super::chip::{chip, open_day};
+use super::chip::{chip, chip_label, open_day};
 use super::items::CalendarItem;
 use crate::app::HomeState;
 
@@ -243,7 +243,7 @@ fn draw_blocks(
             egui::vec2(block_width, height),
         )
         .shrink(1.0);
-        let label = format!("{} {}", item.span().0.format("%H:%M"), item.title);
+        let label = chip_label(item);
         let selected = home.selected_path.as_ref() == Some(&item.path);
         let clicked = ui
             .scope_builder(

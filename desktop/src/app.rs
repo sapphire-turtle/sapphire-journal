@@ -27,7 +27,7 @@ use crate::settings::{ListLayout, MainView, Settings};
 pub const REFRESH_EVERY: Duration = Duration::from_secs(10);
 
 /// The window: the framework's [`Shell`] around the journal. The rail
-/// switches between the journal's views (the list and the kanban), and opens
+/// switches between the journal's views (the list, the kanban and the calendar), and opens
 /// Settings at its foot, which chooses the journal, manages sync and holds
 /// the journal's own settings page. The open entry is edited in the shell's
 /// side pane, beside whichever view is open.
@@ -199,7 +199,7 @@ pub struct HomeState {
     /// The open entry's form; `None` while it loads.
     pub editor: Option<EditorState>,
 
-    /// The list or the kanban.
+    /// The list, the kanban or the calendar.
     pub view: MainView,
     /// Hierarchical (tree) or flat display in the list view.
     pub list_layout: ListLayout,

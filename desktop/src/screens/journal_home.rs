@@ -46,10 +46,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
         ui.separator();
 
-        let filtered = filter_and_sort(home);
         match home.view {
-            MainView::List => draw_list(home, filtered, ui),
-            MainView::Kanban => kanban::show(home, &filtered, ui),
+            MainView::List => {
+                let filtered = filter_and_sort(home);
+                draw_list(home, filtered, ui)
+            }
+            MainView::Kanban => {
+                let filtered = filter_and_sort(home);
+                kanban::show(home, &filtered, ui)
+            }
             MainView::Calendar => calendar::show(home, ui),
         }
     });

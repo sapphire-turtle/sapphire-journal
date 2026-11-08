@@ -4,7 +4,7 @@ use chrono::{Datelike, Duration, Local, NaiveDate};
 use corundum_framework_gui::datetime::{self, Period};
 use sapphire_framework::gui::egui;
 
-use super::chip::{chip, open_day};
+use super::chip::{chip, chip_label, open_day};
 use super::items::{CalendarItem, ItemKind};
 use crate::app::HomeState;
 
@@ -184,14 +184,6 @@ fn draw_row(
         if row.add(egui::Button::new(more).frame(false)).clicked() {
             open_day(home, day);
         }
-    }
-}
-
-fn chip_label(item: &CalendarItem) -> String {
-    if item.all_day {
-        item.title.clone()
-    } else {
-        format!("{} {}", item.span().0.format("%H:%M"), item.title)
     }
 }
 

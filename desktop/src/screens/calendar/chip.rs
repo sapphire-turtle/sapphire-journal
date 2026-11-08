@@ -9,16 +9,23 @@ use crate::app::HomeState;
 use crate::icons;
 
 /// Draw `item` as a chip showing `label`. An event is filled with the
-/// selection colour when `selected`, a task is outlined, a done task is weak
-/// and struck through. The hover text is the title and when it is.
+/// accent colour, a task is outlined, a done task is weak and struck
+/// through; the selected item gets a selection frame. The hover text is the title and when it is.
 pub fn chip(ui: &mut egui::Ui, item: &CalendarItem, label: &str, selected: bool) -> egui::Response {
     let visuals = ui.visuals();
     let text = egui::RichText::new(label);
+    let frame = if selected {
+        visuals.selection.stroke
+    } else {
+        egui::Stroke::NONE
+    };
     let button = match (&item.kind, item.done) {
-        (_, true) => egui::Button::new(text.weak().strikethrough()).frame(false),
+        (_, true) => egui::Button::new(text.weak().strikethrough())
+            .fill(egui::Color32::TRANSPARENT)
+            .stroke(frame),
         (ItemKind::Due(_), false) => {
             let stroke = if selected {
-                visuals.selection.stroke
+                frame
             } else {
                 visuals.widgets.inactive.fg_stroke
             };
@@ -26,16 +33,21 @@ pub fn chip(ui: &mut egui::Ui, item: &CalendarItem, label: &str, selected: bool)
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(stroke)
         }
-        (ItemKind::Event { .. }, false) => {
-            let fill = if selected {
-                visuals.selection.bg_fill
-            } else {
-                visuals.widgets.inactive.weak_bg_fill
-            };
-            egui::Button::new(text).fill(fill)
-        }
+        (ItemKind::Event { .. }, false) => egui::Button::new(text)
+            .fill(visuals.selection.bg_fill)
+            .stroke(frame),
     };
     ui.add(button).on_hover_text(hover_text(item))
+}
+
+/// The text a chip shows: the title, led by the start time unless the item
+/// lasts all day.
+pub fn chip_label(item: &CalendarItem) -> String {
+    if item.all_day {
+        item.title.clone()
+    } else {
+        format!("{} {}", item.span().0.format("%H:%M"), item.title)
+    }
 }
 
 fn hover_text(item: &CalendarItem) -> String {

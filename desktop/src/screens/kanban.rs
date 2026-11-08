@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use sapphire_framework::gui::egui;
 
+use sapphire_journal_api::DateOrTime;
 use sapphire_journal_core::entry::EntryHeader;
 
 use crate::app::HomeState;
@@ -181,7 +182,10 @@ fn card_ui(ui: &mut egui::Ui, header: &EntryHeader, is_active: bool) {
                                 .fit_to_exact_size(egui::vec2(12.0, 12.0))
                                 .tint(tint),
                         );
-                        ui.weak(due.to_string());
+                        ui.weak(match due {
+                            DateOrTime::Date(d) => d.format("%Y-%m-%d").to_string(),
+                            DateOrTime::DateTime(t) => t.format("%Y-%m-%d %H:%M").to_string(),
+                        });
                     }
                     for tag in tags {
                         ui.weak(format!("#{tag}"));

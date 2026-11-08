@@ -4,7 +4,7 @@ use chrono::{Datelike, Days, Local, NaiveDate};
 use corundum_framework_gui::datetime::{self, Period};
 use sapphire_framework::gui::egui;
 
-use super::chip::{chip, open_day};
+use super::chip::{chip, chip_label, open_day};
 use super::items::CalendarItem;
 use crate::app::HomeState;
 
@@ -136,14 +136,6 @@ pub fn visible_count(total: usize, fits: usize) -> usize {
         total
     } else {
         fits.saturating_sub(1)
-    }
-}
-
-fn chip_label(item: &CalendarItem) -> String {
-    if item.all_day {
-        item.title.clone()
-    } else {
-        format!("{} {}", item.span().0.format("%H:%M"), item.title)
     }
 }
 
