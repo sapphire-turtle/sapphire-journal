@@ -49,7 +49,7 @@ use crate::{
 // ── schema version ────────────────────────────────────────────────────────────
 
 /// Stored in `PRAGMA user_version`.  Increment whenever the schema changes.
-pub const SCHEMA_VERSION: i32 = 6;
+pub const SCHEMA_VERSION: i32 = 7;
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +91,11 @@ CREATE TABLE IF NOT EXISTS files (
     len      INTEGER NOT NULL
 );
 ";
+
+/// Read a `due` / event column back as a date or a date and time.
+fn parse_dot_opt(s: Option<String>) -> Option<sapphire_journal_api::DateOrTime> {
+    s.as_deref().and_then(|s| s.parse().ok())
+}
 
 // ── public API ────────────────────────────────────────────────────────────────
 
@@ -417,12 +422,12 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
 
         let task = task_status.map(|status| TaskMetaView {
             status,
-            due: parse_dt_opt(task_due),
+            due: parse_dot_opt(task_due),
             started_at: parse_dt_opt(task_started_at),
             closed_at: parse_dt_opt(task_closed_at),
         });
 
-        let event = match (parse_dt_opt(event_start), parse_dt_opt(event_end)) {
+        let event = match (parse_dot_opt(event_start), parse_dot_opt(event_end)) {
             (Some(start), Some(end)) => Some(EventMetaView { start, end }),
             _ => None,
         };
@@ -544,13 +549,13 @@ fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entr
 
     let task = task_status.map(|status| TaskMeta {
         status,
-        due: parse_dt_opt(task_due),
+        due: parse_dot_opt(task_due),
         started_at: parse_dt_opt(task_started_at),
         closed_at: parse_dt_opt(task_closed_at),
         extra: IndexMap::new(),
     });
 
-    let event = match (parse_dt_opt(event_start), parse_dt_opt(event_end)) {
+    let event = match (parse_dot_opt(event_start), parse_dot_opt(event_end)) {
         (Some(start), Some(end)) => Some(EventMeta {
             start,
             end,
@@ -666,10 +671,7 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
             fm.created_at.format("%Y-%m-%dT%H:%M").to_string(),
             fm.updated_at.format("%Y-%m-%dT%H:%M").to_string(),
             fm.task.as_ref().map(|t| t.status.clone()),
-            fm.task
-                .as_ref()
-                .and_then(|t| t.due)
-                .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
+            fm.task.as_ref().and_then(|t| t.due).map(|d| d.to_string()),
             fm.task
                 .as_ref()
                 .and_then(|t| t.started_at)
@@ -678,12 +680,8 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
                 .as_ref()
                 .and_then(|t| t.closed_at)
                 .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
-            fm.event
-                .as_ref()
-                .map(|e| e.start.format("%Y-%m-%dT%H:%M").to_string()),
-            fm.event
-                .as_ref()
-                .map(|e| e.end.format("%Y-%m-%dT%H:%M").to_string()),
+            fm.event.as_ref().map(|e| e.start.to_string()),
+            fm.event.as_ref().map(|e| e.end.to_string()),
             fm.hidden.map(i64::from),
         ],
     )?;
@@ -770,6 +768,47 @@ mod tests {
             hidden: None,
             extra: indexmap::IndexMap::new(),
         }
+    }
+
+    #[test]
+    fn cache_round_trips_date_or_time() {
+        use sapphire_journal_api::DateOrTime;
+        let tmp = tempfile::tempdir().unwrap();
+        let conn = conn_with_schema();
+        let id = GrainId::now_unix();
+        let mut fm = frontmatter(id, "rt");
+        let d = DateOrTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap());
+        let dt = DateOrTime::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 11, 9)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+        fm.task = Some(crate::entry::TaskMeta {
+            due: Some(d),
+            status: "open".into(),
+            started_at: None,
+            closed_at: None,
+            extra: indexmap::IndexMap::new(),
+        });
+        fm.event = Some(crate::entry::EventMeta {
+            start: dt,
+            end: d,
+            extra: indexmap::IndexMap::new(),
+        });
+        let entry = Entry {
+            path: tmp.path().join("rt.md"),
+            frontmatter: fm,
+            body: String::new(),
+        };
+        write_fixture(&entry);
+        upsert_entry(&conn, &entry).unwrap();
+        let headers = list_entries_from_cache(&conn).unwrap();
+        assert_eq!(headers.len(), 1);
+        let h = &headers[0].frontmatter;
+        assert_eq!(h.task.as_ref().unwrap().due, Some(d));
+        let ev = h.event.as_ref().unwrap();
+        assert_eq!((ev.start, ev.end), (dt, d));
     }
 
     /// A retitle-driven rename (`update_entry`/`fix_entry`) re-upserts the

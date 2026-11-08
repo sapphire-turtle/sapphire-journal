@@ -15,6 +15,7 @@ use indexmap::IndexMap;
 use chrono::{Datelike as _, Duration, NaiveDateTime};
 use grain_id::GrainId;
 use rusqlite::Connection;
+use sapphire_journal_api::DateOrTime;
 
 use crate::{
     cache,
@@ -225,8 +226,12 @@ impl EntryFilter {
         let mut labels = Vec::new();
 
         let timestamp_ok = if self.has_timestamp_filter() {
-            let event_start_val = entry.frontmatter.event.as_ref().map(|e| e.start);
-            let event_end_val = entry.frontmatter.event.as_ref().map(|e| e.end);
+            let event_start_val = entry
+                .frontmatter
+                .event
+                .as_ref()
+                .map(|e| e.start.start_bound());
+            let event_end_val = entry.frontmatter.event.as_ref().map(|e| e.end.end_bound());
             let created_val = Some(entry.frontmatter.created_at);
             let updated_val = Some(entry.frontmatter.updated_at);
 
@@ -251,7 +256,7 @@ impl EntryFilter {
                     && let Period::Range(_, end) = p
                 {
                     let is_overdue = entry.frontmatter.task.as_ref().is_some_and(|t| {
-                        t.closed_at.is_none() && t.due.is_some_and(|due| due <= *end)
+                        t.closed_at.is_none() && t.due.is_some_and(|due| due.end_bound() <= *end)
                     });
                     if is_overdue {
                         labels.push(MatchFlag::TaskOverdue);
@@ -293,7 +298,7 @@ impl EntryFilter {
                 if self.fields.task_overdue {
                     let now = chrono::Local::now().naive_local();
                     let is_overdue = entry.frontmatter.task.as_ref().is_some_and(|t| {
-                        t.closed_at.is_none() && t.due.is_some_and(|due| due < now)
+                        t.closed_at.is_none() && t.due.is_some_and(|due| due.end_bound() < now)
                     });
                     if is_overdue {
                         labels.push(MatchFlag::TaskOverdue);
@@ -597,12 +602,20 @@ fn sort_cmp(a: &EntryHeader, b: &EntryHeader, field: SortField) -> Ordering {
         SortField::CreatedAt => a.frontmatter.created_at.cmp(&b.frontmatter.created_at),
         SortField::UpdatedAt => a.frontmatter.updated_at.cmp(&b.frontmatter.updated_at),
         SortField::TaskDue => cmp_opt(
-            a.frontmatter.task.as_ref().and_then(|t| t.due),
-            b.frontmatter.task.as_ref().and_then(|t| t.due),
+            a.frontmatter
+                .task
+                .as_ref()
+                .and_then(|t| t.due)
+                .map(|d| d.end_bound()),
+            b.frontmatter
+                .task
+                .as_ref()
+                .and_then(|t| t.due)
+                .map(|d| d.end_bound()),
         ),
         SortField::EventStart => cmp_opt(
-            a.frontmatter.event.as_ref().map(|e| e.start),
-            b.frontmatter.event.as_ref().map(|e| e.start),
+            a.frontmatter.event.as_ref().map(|e| e.start.start_bound()),
+            b.frontmatter.event.as_ref().map(|e| e.start.start_bound()),
         ),
     }
 }
@@ -635,12 +648,12 @@ pub struct EntryFields {
     pub slug: Option<String>,
     /// `None` = leave tags unchanged; `Some([])` = clear all tags.
     pub tags: Option<Vec<String>>,
-    pub task_due: Option<NaiveDateTime>,
+    pub task_due: Option<DateOrTime>,
     pub task_status: Option<String>,
     pub task_started_at: Option<NaiveDateTime>,
     pub task_closed_at: Option<NaiveDateTime>,
-    pub event_start: Option<NaiveDateTime>,
-    pub event_end: Option<NaiveDateTime>,
+    pub event_start: Option<DateOrTime>,
+    pub event_end: Option<DateOrTime>,
     /// Hidden flag. `None` = leave unchanged (update) / don't write (create);
     /// `Some(true)` / `Some(false)` = write the flag to the frontmatter.
     pub hidden: Option<bool>,
@@ -1136,6 +1149,141 @@ mod tests {
             frontmatter,
             flags: Vec::new(),
         }
+    }
+
+    fn day(d: u32) -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
+    }
+
+    fn at(d: u32, h: u32, m: u32) -> chrono::NaiveDateTime {
+        day(d).and_hms_opt(h, m, 0).unwrap()
+    }
+
+    fn today_period() -> Period {
+        Period::Range(
+            day(8).and_hms_opt(0, 0, 0).unwrap(),
+            day(8).and_hms_opt(23, 59, 59).unwrap(),
+        )
+    }
+
+    fn event_header(start: DateOrTime, end: DateOrTime) -> EntryHeader {
+        let mut h = header(None, None, now());
+        h.frontmatter.event = Some(crate::entry::EventMetaView { start, end });
+        h
+    }
+
+    #[test]
+    fn date_due_matches_today() {
+        let mut task = open_task();
+        task.due = Some(DateOrTime::Date(day(8)));
+        let h = header(Some(task), None, now());
+        let f = EntryFilter {
+            period: Some(today_period()),
+            fields: FieldSelector {
+                task_overdue: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(f.matches(&h).0, "due today is overdue-or-due within today");
+    }
+
+    #[test]
+    fn date_due_today_is_not_overdue() {
+        // The overdue selector with a period uses `due.end_bound() <= period end`;
+        // a date-only due on the period's last day is still within it, but a due
+        // on the day after is not.
+        let mut task = open_task();
+        task.due = Some(DateOrTime::Date(day(9)));
+        let h = header(Some(task), None, now());
+        let f = EntryFilter {
+            period: Some(today_period()),
+            fields: FieldSelector {
+                task_overdue: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!f.matches(&h).0, "due tomorrow is not overdue today");
+
+        // And a due today at the start of today is not matched by a period that
+        // ended before the day was over.
+        let mut task = open_task();
+        task.due = Some(DateOrTime::Date(day(8)));
+        let h = header(Some(task), None, now());
+        let early = EntryFilter {
+            period: Some(Period::Range(at(8, 0, 0), at(8, 12, 0))),
+            fields: FieldSelector {
+                task_overdue: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!early.matches(&h).0, "date due ends at 23:59:59");
+    }
+
+    #[test]
+    fn timed_event_ending_yesterday_is_out() {
+        let h = event_header(
+            DateOrTime::DateTime(at(7, 22, 0)),
+            DateOrTime::DateTime(at(7, 23, 59)),
+        );
+        let f = EntryFilter {
+            period: Some(today_period()),
+            fields: FieldSelector {
+                event_span: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!f.matches(&h).0);
+    }
+
+    #[test]
+    fn all_day_event_over_two_days_overlaps_both() {
+        let h = event_header(DateOrTime::Date(day(7)), DateOrTime::Date(day(8)));
+        for d in [7, 8] {
+            let p = Period::Range(
+                day(d).and_hms_opt(0, 0, 0).unwrap(),
+                day(d).and_hms_opt(23, 59, 59).unwrap(),
+            );
+            let f = EntryFilter {
+                period: Some(p),
+                fields: FieldSelector {
+                    event_span: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            assert!(f.matches(&h).0, "overlaps 2026-11-{d:02}");
+        }
+    }
+
+    #[test]
+    fn create_keeps_date_only_due() {
+        let tmp = tempfile::tempdir().unwrap();
+        // The cache lives under the app context; point it at a scratch directory.
+        let cache = tempfile::tempdir().unwrap();
+        crate::JOURNAL_CTX.set_cache_dir(cache.path().to_path_buf());
+        let journal = crate::journal::Journal::init(tmp.path()).unwrap();
+        let state = JournalState::open(journal).unwrap();
+        let path = create_entry(
+            &state,
+            EntryFields {
+                title: Some("due date".into()),
+                task_due: Some(DateOrTime::Date(day(20))),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        // The YAML writer may quote the value (`"2026-11-20"`); either way it is
+        // the bare date, with no time.
+        let due = text
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("due:"))
+            .unwrap_or_else(|| panic!("no due line in {text}"));
+        assert_eq!(due.trim().trim_matches('"'), "2026-11-20", "{text}");
     }
 
     fn open_task() -> TaskMetaView {

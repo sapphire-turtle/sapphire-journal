@@ -34,7 +34,7 @@ sapphire-journal-cli  = { path = "../crates/sapphire-journal-cli", version = "0.
 # parameters and names. The window reads nothing from the journal itself:
 # it is a client of the `sapphire-journal` server.
 sapphire-journal-core = { path = "../crates/sapphire-journal-core", version = "0.15.2" }
-sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "4.0.0" }
+sapphire-journal-api  = { path = "../crates/sapphire-journal-api",  version = "5.0.0" }
 sapphire-journal-mcp  = { path = "../crates/sapphire-journal-mcp", version = "0.4.2" }
 # `eframe`: `gui::app::run` starts the window, and `gui::{eframe, egui}` are the
 # versions it renders with.
