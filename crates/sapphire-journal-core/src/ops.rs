@@ -106,7 +106,8 @@ impl FromStr for SortOrder {
 /// field must be present (set)".
 ///
 /// **Semantic task selectors** — use the period end as a cutoff where applicable:
-/// - `task_overdue`: `closed_at` absent **and** `due ≤ period_end` (or `due < now`).
+/// - `task_overdue`: `closed_at` absent **and** `due ≤ period_end` (or `due < now`);
+///   a date-only `due` counts until 23:59:59 of that day.
 /// - `task_in_progress`: `closed_at` absent **and** `started_at ≤ period_end` (or set).
 /// - `task_unstarted`: `started_at` and `closed_at` both absent; period is not applied.
 #[derive(Debug, Default, Clone)]
@@ -1189,37 +1190,23 @@ mod tests {
     }
 
     #[test]
-    fn date_due_today_is_not_overdue() {
-        // The overdue selector with a period uses `due.end_bound() <= period end`;
-        // a date-only due on the period's last day is still within it, but a due
-        // on the day after is not.
-        let mut task = open_task();
-        task.due = Some(DateOrTime::Date(day(9)));
-        let h = header(Some(task), None, now());
-        let f = EntryFilter {
-            period: Some(today_period()),
-            fields: FieldSelector {
-                task_overdue: true,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        assert!(!f.matches(&h).0, "due tomorrow is not overdue today");
-
-        // And a due today at the start of today is not matched by a period that
-        // ended before the day was over.
+    fn date_due_is_not_overdue_the_day_before() {
+        // With a period, `task_overdue` means "due by the period's end"; a
+        // date-only due counts until 23:59:59 of its day.
         let mut task = open_task();
         task.due = Some(DateOrTime::Date(day(8)));
         let h = header(Some(task), None, now());
-        let early = EntryFilter {
-            period: Some(Period::Range(at(8, 0, 0), at(8, 12, 0))),
+        let over = |p: Period| EntryFilter {
+            period: Some(p),
             fields: FieldSelector {
                 task_overdue: true,
                 ..Default::default()
             },
             ..Default::default()
         };
-        assert!(!early.matches(&h).0, "date due ends at 23:59:59");
+        let day_before = Period::Range(at(7, 0, 0), day(7).and_hms_opt(23, 59, 59).unwrap());
+        assert!(!over(day_before).matches(&h).0);
+        assert!(over(today_period()).matches(&h).0);
     }
 
     #[test]
