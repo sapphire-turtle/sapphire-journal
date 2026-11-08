@@ -33,6 +33,13 @@ pub fn task_status_label(status: &str) -> &'static str {
     }
 }
 
+/// Returns `true` when an incomplete task is past due at `now`.
+///
+/// A date-only due date is overdue only once its day has ended (`23:59:59`).
+pub fn task_is_overdue(task: &TaskMetaView, now: NaiveDateTime) -> bool {
+    task.closed_at.is_none() && task.due.is_some_and(|due| due.end_bound() < now)
+}
+
 /// Returns `true` when a task is *stale*: incomplete (`closed_at` absent) and
 /// not updated for at least `stale_after`.
 ///
@@ -67,8 +74,7 @@ pub fn entry_flags(
     let now = Local::now().naive_local();
 
     // Slot 1: overdue (highest priority) > created <24h > updated <24h
-    let is_overdue =
-        task.is_some_and(|t| t.due.is_some_and(|due| due < now) && t.closed_at.is_none());
+    let is_overdue = task.is_some_and(|t| task_is_overdue(t, now));
     if is_overdue {
         flags.push(EntryFlag::Overdue);
     } else {
@@ -82,7 +88,7 @@ pub fn entry_flags(
 
     // Slot 2: entry type
     if let Some(ev) = event {
-        if ev.end < now {
+        if ev.end.end_bound() < now {
             flags.push(EntryFlag::EventClosed);
         } else {
             flags.push(EntryFlag::Event);
@@ -139,7 +145,24 @@ mod tests {
     }
 
     fn event(start: chrono::NaiveDateTime, end: chrono::NaiveDateTime) -> EventMetaView {
-        EventMetaView { start, end }
+        EventMetaView {
+            start: sapphire_journal_api::DateOrTime::DateTime(start),
+            end: sapphire_journal_api::DateOrTime::DateTime(end),
+        }
+    }
+
+    fn at(s: &str) -> chrono::NaiveDateTime {
+        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap()
+    }
+
+    #[test]
+    fn date_due_today_is_not_overdue() {
+        let mut t = open_task();
+        t.due = Some(sapphire_journal_api::DateOrTime::Date(
+            chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
+        ));
+        assert!(!task_is_overdue(&t, at("2026-11-08T18:00:00")));
+        assert!(task_is_overdue(&t, at("2026-11-09T00:00:01")));
     }
 
     fn now() -> chrono::NaiveDateTime {

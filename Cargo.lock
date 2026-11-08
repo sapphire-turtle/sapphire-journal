@@ -5499,7 +5499,7 @@ dependencies = [
 
 [[package]]
 name = "sapphire-journal-api"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "chrono",
  "grain-id 0.15.0",

@@ -181,7 +181,7 @@ fn card_ui(ui: &mut egui::Ui, header: &EntryHeader, is_active: bool) {
                                 .fit_to_exact_size(egui::vec2(12.0, 12.0))
                                 .tint(tint),
                         );
-                        ui.weak(due.format("%Y-%m-%d").to_string());
+                        ui.weak(due.to_string());
                     }
                     for tag in tags {
                         ui.weak(format!("#{tag}"));

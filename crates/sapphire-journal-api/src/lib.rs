@@ -19,6 +19,9 @@
 pub use grain_id::GrainId;
 pub use sapphire_server_api as server;
 
+mod date_or_time;
+pub use date_or_time::DateOrTime;
+
 mod entry;
 pub use entry::{
     Entry, EntryHeader, EventMeta, EventMetaView, Frontmatter, FrontmatterView, TaskMeta,
@@ -115,7 +118,7 @@ mod tests {
 
     #[test]
     fn api_version_is_the_major() {
-        assert_eq!(API_VERSION, 4, "the crate's major is the API version");
+        assert_eq!(API_VERSION, 5, "the crate's major is the API version");
     }
 
     /// An entry's unknown fields survive the trip through JSON.
