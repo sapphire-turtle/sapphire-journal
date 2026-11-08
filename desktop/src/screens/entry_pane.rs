@@ -8,6 +8,7 @@
 
 use sapphire_framework::gui::egui;
 
+use sapphire_journal_api::DateOrTime;
 use sapphire_journal_core::{entry::Entry, entry::EntryHeader, labels::EntryFlag};
 
 use crate::app::{EditorState, HomeState};
@@ -399,18 +400,18 @@ pub fn editor_for(entry: Entry) -> EditorState {
             .task
             .as_ref()
             .and_then(|t| t.due)
-            .map(|d| d.format("%Y-%m-%d").to_string())
+            .map(|d| d.to_string())
             .unwrap_or_default(),
         has_event: fm.event.is_some(),
         event_start: fm
             .event
             .as_ref()
-            .map(|e| e.start.format("%Y-%m-%d").to_string())
+            .map(|e| e.start.to_string())
             .unwrap_or_default(),
         event_end: fm
             .event
             .as_ref()
-            .map(|e| e.end.format("%Y-%m-%d").to_string())
+            .map(|e| e.end.to_string())
             .unwrap_or_default(),
         base: entry,
     }
@@ -470,7 +471,10 @@ fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
             None
         } else {
             Some(
-                sapphire_journal_core::period::parse_datetime_end(editor.task_due.trim())
+                editor
+                    .task_due
+                    .trim()
+                    .parse::<DateOrTime>()
                     .map_err(|e| format!("task.due: {e}"))?,
             )
         };
@@ -505,9 +509,11 @@ fn entry_from_editor(editor: &EditorState) -> Result<Entry, String> {
         } else {
             editor.event_end.trim()
         };
-        let start = sapphire_journal_core::period::parse_datetime(start_str)
+        let start = start_str
+            .parse::<DateOrTime>()
             .map_err(|e| format!("event.start: {e}"))?;
-        let end = sapphire_journal_core::period::parse_datetime_end(end_str)
+        let end = end_str
+            .parse::<DateOrTime>()
             .map_err(|e| format!("event.end: {e}"))?;
         let prev = entry.frontmatter.event.take();
         entry.frontmatter.event = Some(sapphire_journal_core::entry::EventMeta {

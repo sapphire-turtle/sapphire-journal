@@ -624,13 +624,23 @@ fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
         "created_at" => headers.sort_by_key(|a| a.frontmatter.created_at),
         "updated_at" => headers.sort_by_key(|a| a.frontmatter.updated_at),
         "task_due" => headers.sort_by(|a, b| {
-            let av = a.frontmatter.task.as_ref().and_then(|t| t.due);
-            let bv = b.frontmatter.task.as_ref().and_then(|t| t.due);
+            let av = a
+                .frontmatter
+                .task
+                .as_ref()
+                .and_then(|t| t.due)
+                .map(|d| d.end_bound());
+            let bv = b
+                .frontmatter
+                .task
+                .as_ref()
+                .and_then(|t| t.due)
+                .map(|d| d.end_bound());
             cmp_opt(av, bv)
         }),
         "event_start" => headers.sort_by(|a, b| {
-            let av = a.frontmatter.event.as_ref().map(|e| e.start);
-            let bv = b.frontmatter.event.as_ref().map(|e| e.start);
+            let av = a.frontmatter.event.as_ref().map(|e| e.start.start_bound());
+            let bv = b.frontmatter.event.as_ref().map(|e| e.start.start_bound());
             cmp_opt(av, bv)
         }),
         _ => {}
