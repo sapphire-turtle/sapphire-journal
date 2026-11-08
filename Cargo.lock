@@ -164,6 +164,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "alumina-datetime"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "756ffe51d04f5b1dc0e85484c68198f3502012e4cd6c2262d957eb6e275781bb"
+dependencies = [
+ "chrono",
+ "egui",
+]
+
+[[package]]
 name = "android-activity"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1098,6 +1108,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d8d56ff2f93ecb61faf5b116a2a40e0f19b4363e8cdc343b35e3f6a384fb7b"
 dependencies = [
+ "alumina-datetime",
  "corundum-framework-keys",
  "corundum-framework-package",
  "corundum-framework-platform",
@@ -5559,6 +5570,7 @@ dependencies = [
  "chrono",
  "clap",
  "corundum-framework-build",
+ "corundum-framework-gui",
  "corundum-framework-platform",
  "egui_extras",
  "grain-id 0.15.0",

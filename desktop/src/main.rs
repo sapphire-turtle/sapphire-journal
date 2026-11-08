@@ -39,6 +39,7 @@ mod error;
 mod icons;
 #[cfg(feature = "package")]
 mod package;
+mod period_nav;
 mod screens;
 mod settings;
 mod widgets;

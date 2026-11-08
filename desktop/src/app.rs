@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use chrono::NaiveDate;
+use corundum_framework_gui::datetime::Period;
 use grain_id::GrainId;
 use sapphire_framework::gui::{
     Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
@@ -190,13 +190,8 @@ pub struct HomeState {
 
     // ── Filter / sort state ─────────────────────────────────────────────────
     pub filter_text: String,
-    /// Active period filter, a [`sapphire_journal_core::period`] string:
-    /// the period picker writes `YYYY`, `YYYY-MM`, `YYYY-Www`, `YYYY-MM-DD`
-    /// or `today`, and the field takes any alias the CLI does. Empty = no
-    /// filter (all entries).
-    pub period: String,
-    /// The month the period picker shows.
-    pub calendar_cursor: NaiveDate,
+    /// The shared period the views show; `None` = all entries.
+    pub period: Option<Period>,
     /// Sort field. One of "updated_at" | "created_at" | "title" | "id"
     /// | "task_due" | "event_start".
     pub sort_by: String,
@@ -243,6 +238,9 @@ pub enum Pending {
     Quit,
 }
 
+/// The period the home shows at start: all entries. Task 7 reads it from the startup setting.
+const INITIAL_PERIOD: Option<Period> = None;
+
 impl HomeState {
     pub fn new(api: Api, settings: &Settings) -> Self {
         Self {
@@ -260,8 +258,7 @@ impl HomeState {
             show_filters: false,
             pane_request: None,
             filter_text: String::new(),
-            period: String::new(),
-            calendar_cursor: chrono::Local::now().date_naive(),
+            period: INITIAL_PERIOD,
             sort_by: "updated_at".to_string(),
             sort_order: "desc".to_string(),
             confirm_delete: None,

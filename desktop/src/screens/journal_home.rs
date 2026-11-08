@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use chrono::NaiveDate;
+use corundum_framework_gui::datetime::{self, PeriodPickerButton};
 use grain_id::GrainId;
 use sapphire_framework::gui::egui;
 
@@ -11,16 +12,16 @@ use sapphire_journal_core::{
         EntryFilter, EntryTreeNode, FieldSelector, SortField as CoreSortField,
         SortOrder as CoreSortOrder, build_entry_tree,
     },
-    period::{Period, parse_period},
+    period::Period,
 };
 
 use crate::app::{App, HomeState, Pending};
 use crate::icons;
+use crate::period_nav::to_filter;
 use crate::screens::entry_pane;
 use crate::screens::kanban;
 use crate::settings::{ListLayout, MainView};
 use crate::widgets::buttons::{icon_btn, icon_text_btn, icon_toggle_btn};
-use crate::widgets::period_picker::period_picker;
 
 /// The journal screen: a view of the entries. The open one is edited in the
 /// shell's side pane ([`entry_pane`]). Everything it shows comes from the
@@ -73,9 +74,12 @@ fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
         draw_journal_menu(app, ui);
         let home = &mut app.home;
         let entries = &home.entries;
-        period_picker(ui, &mut home.period, &mut home.calendar_cursor, &|d| {
-            count_on(entries, d)
-        });
+        ui.add(
+            PeriodPickerButton::new("home_period", &mut home.period)
+                .clearable(true)
+                .day_badge(&|d| count_on(entries, d))
+                .config(datetime::config(ui.ctx())),
+        );
         ui.add(
             egui::TextEdit::singleline(&mut home.filter_text)
                 .hint_text("Search title / tag / id")
@@ -597,10 +601,8 @@ fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     let mut headers = home.entries.clone();
 
     // Period filter via core EntryFilter.
-    if !home.period.trim().is_empty()
-        && let Ok(period) = parse_period(home.period.trim())
-    {
-        let filter = period_filter(period);
+    if let Some(period) = &home.period {
+        let filter = period_filter(to_filter(period));
         headers.retain(|h| filter.matches(h).0);
     }
 

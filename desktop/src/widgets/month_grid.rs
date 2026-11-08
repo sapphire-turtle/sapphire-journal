@@ -63,6 +63,7 @@ impl<'a> MonthGrid<'a> {
         self
     }
 
+    #[allow(dead_code)] // the date picker shows no badges
     pub fn day_badge(mut self, badge: DayBadge<'a>) -> Self {
         self.day_badge = Some(badge);
         self
@@ -277,14 +278,4 @@ fn last_day_of_month(year: i32, month: u32) -> u32 {
     };
     let first_next = NaiveDate::from_ymd_opt(ny, nm, 1).unwrap();
     (first_next - Duration::days(1)).day()
-}
-
-/// The highlight range for a `Period` parsed from the period picker. Returns `None` when the period
-/// is `Period::None` or empty.
-pub fn selection_from_period(period: &sapphire_journal_core::period::Period) -> Selection {
-    use sapphire_journal_core::period::Period;
-    match period {
-        Period::None => Selection::None,
-        Period::Range(s, e) => Selection::Range(s.date(), e.date()),
-    }
 }
