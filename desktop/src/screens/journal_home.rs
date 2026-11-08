@@ -18,6 +18,7 @@ use sapphire_journal_core::{
 use crate::app::{App, HomeState, Pending};
 use crate::icons;
 use crate::period_nav::{shift, to_filter};
+use crate::screens::calendar;
 use crate::screens::entry_pane;
 use crate::screens::kanban;
 use crate::settings::{ListLayout, MainView};
@@ -49,6 +50,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         match home.view {
             MainView::List => draw_list(home, filtered, ui),
             MainView::Kanban => kanban::show(home, &filtered, ui),
+            MainView::Calendar => calendar::show(home, ui),
         }
     });
 }

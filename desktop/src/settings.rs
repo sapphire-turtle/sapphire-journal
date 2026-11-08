@@ -41,6 +41,8 @@ pub enum MainView {
     List,
     /// Tasks in one column per status.
     Kanban,
+    /// Events and due dates by day, week or month.
+    Calendar,
 }
 
 /// How the list view lays out entries.
@@ -204,6 +206,12 @@ mod tests {
             with(StartupPeriod::Last, Some("garbage")).initial_period(sun()),
             this_week()
         );
+    }
+
+    #[test]
+    fn calendar_view_loads() {
+        let s: Settings = toml::from_str("view = \"calendar\"\n").unwrap();
+        assert_eq!(s.view, MainView::Calendar);
     }
 
     #[test]

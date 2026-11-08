@@ -17,6 +17,7 @@ use crate::api::{Api, Change, Reply};
 use crate::icons;
 use crate::period_nav::period_string;
 use crate::screens;
+use crate::screens::calendar::items::CalendarCache;
 use crate::screens::desktop_settings::DesktopSettingsPage;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
 use crate::settings::{ListLayout, MainView, Settings};
@@ -58,6 +59,7 @@ impl Window {
             vec![
                 Destination::new(MainView::List, icons::layout_list(), "List"),
                 Destination::new(MainView::Kanban, icons::kanban(), "Kanban"),
+                Destination::new(MainView::Calendar, icons::calendar(), "Calendar"),
             ],
             settings,
         )
@@ -215,6 +217,8 @@ pub struct HomeState {
     pub filter_text: String,
     /// The shared period the views show; `None` = all entries.
     pub period: Option<Period>,
+    /// The calendar's per-day index of the entries, rebuilt when they change.
+    pub calendar: CalendarCache,
     /// Sort field. One of "updated_at" | "created_at" | "title" | "id"
     /// | "task_due" | "event_start".
     pub sort_by: String,
@@ -279,6 +283,7 @@ impl HomeState {
             pane_request: None,
             filter_text: String::new(),
             period: settings.initial_period(chrono::Local::now().date_naive()),
+            calendar: CalendarCache::default(),
             sort_by: "updated_at".to_string(),
             sort_order: "desc".to_string(),
             confirm_delete: None,
@@ -434,6 +439,7 @@ impl App {
                     match result {
                         Ok(entries) => {
                             home.entries = entries;
+                            home.calendar.invalidate();
                             home.entries_error = None;
                         }
                         // Keep showing the last list: a server restart should
