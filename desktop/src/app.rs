@@ -14,6 +14,7 @@ use sapphire_journal_core::entry::{Entry, EntryHeader};
 
 use crate::api::{Api, Change, Reply};
 use crate::icons;
+use crate::period_nav::period_string;
 use crate::screens;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
 use crate::settings::{ListLayout, MainView, Settings};
@@ -107,9 +108,14 @@ impl eframe::App for Window {
         }
         // Remember the view picked on the rail, and the list's layout.
         let (settings, home) = (&mut self.app.settings, &mut self.app.home);
-        if settings.view != home.view || settings.list_layout != home.list_layout {
+        let period = period_string(home.period.as_ref());
+        if settings.view != home.view
+            || settings.list_layout != home.list_layout
+            || settings.last_period.as_deref() != Some(period.as_str())
+        {
             settings.view = home.view;
             settings.list_layout = home.list_layout;
+            settings.last_period = Some(period);
             if let Err(e) = settings.save() {
                 home.error_msg = Some(format!("Failed to save settings: {e}"));
             }
@@ -238,9 +244,6 @@ pub enum Pending {
     Quit,
 }
 
-/// The period the home shows at start: all entries. Task 7 reads it from the startup setting.
-const INITIAL_PERIOD: Option<Period> = None;
-
 impl HomeState {
     pub fn new(api: Api, settings: &Settings) -> Self {
         Self {
@@ -258,7 +261,7 @@ impl HomeState {
             show_filters: false,
             pane_request: None,
             filter_text: String::new(),
-            period: INITIAL_PERIOD,
+            period: settings.initial_period(chrono::Local::now().date_naive()),
             sort_by: "updated_at".to_string(),
             sort_order: "desc".to_string(),
             confirm_delete: None,

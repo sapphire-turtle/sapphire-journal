@@ -31,13 +31,11 @@ pub fn shift(period: &Period, by: i32) -> Option<Period> {
 }
 
 /// `period` as `Display` writes it, or `""` for all entries.
-#[allow(dead_code)] // saved by the startup setting (Task 7)
 pub fn period_string(period: Option<&Period>) -> String {
     period.map(ToString::to_string).unwrap_or_default()
 }
 
 /// The inverse of [`period_string`]: `""` is `Some(None)` (all), anything unparsable `None`.
-#[allow(dead_code)] // read by the startup setting (Task 7)
 pub fn parse_period_string(s: &str) -> Option<Option<Period>> {
     let s = s.trim();
     if s.is_empty() {
