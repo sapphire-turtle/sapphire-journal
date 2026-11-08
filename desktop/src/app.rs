@@ -219,6 +219,9 @@ pub struct HomeState {
     pub period: Option<Period>,
     /// The calendar's per-day index of the entries, rebuilt when they change.
     pub calendar: CalendarCache,
+    /// The period the calendar last scrolled to its starting point for, so
+    /// it does so once per period, not every frame.
+    pub calendar_scrolled: Option<Period>,
     /// Sort field. One of "updated_at" | "created_at" | "title" | "id"
     /// | "task_due" | "event_start".
     pub sort_by: String,
@@ -284,6 +287,7 @@ impl HomeState {
             filter_text: String::new(),
             period: settings.initial_period(chrono::Local::now().date_naive()),
             calendar: CalendarCache::default(),
+            calendar_scrolled: None,
             sort_by: "updated_at".to_string(),
             sort_order: "desc".to_string(),
             confirm_delete: None,

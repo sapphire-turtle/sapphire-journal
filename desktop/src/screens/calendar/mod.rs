@@ -2,9 +2,7 @@
 //! agenda for anything else.
 
 pub mod agenda;
-#[allow(dead_code, reason = "drawn by the layouts in Tasks 13-15")]
 pub mod chip;
-#[allow(dead_code, reason = "drawn by the layouts in Tasks 13-15")]
 pub mod items;
 pub mod month;
 pub mod timeline;
