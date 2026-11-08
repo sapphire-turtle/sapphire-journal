@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use sapphire_framework::backend::{IpcBackend, SearchMode, WorkspaceBackend as _};
 use sapphire_framework::ipc::Endpoint;
 use sapphire_journal_api::{
-    self as api, EntryCheckParams, EntryFixParams, EntryGetParams, EntryListParams,
+    self as api, DateOrTime, EntryCheckParams, EntryFixParams, EntryGetParams, EntryListParams,
     EntryModifyParams, EntryNewParams, EntryPrepareParams, EntryRemoveParams, EntryResolveParams,
 };
 use sapphire_journal_core::{
@@ -10,13 +10,13 @@ use sapphire_journal_core::{
     entry_ref::EntryRef,
     labels::EntryFlag,
     ops::{EntryListItem, EntryTreeNode, UpdateOption},
-    period::{parse_datetime, parse_datetime_end},
+    period::parse_datetime,
     text_input::filter as core_filter,
 };
 
 use chrono::NaiveDateTime;
 use clap::{Args, Subcommand};
-use std::{path::Path, process::Command};
+use std::{path::Path, process::Command, str::FromStr as _};
 
 use crate::client::Server;
 
@@ -295,9 +295,9 @@ pub struct EntryFields {
     #[arg(long, short = 'T', num_args = 0.., value_delimiter = ',')]
     pub tags: Option<Vec<String>>,
 
-    /// Task due date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM; date-only = 23:59)
-    #[arg(long, value_name = "DATETIME", value_parser = parse_datetime_end)]
-    pub task_due: Option<NaiveDateTime>,
+    /// Task due date, or date and time (YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM)
+    #[arg(long, value_name = "DATE[THH:MM]", value_parser = DateOrTime::from_str)]
+    pub task_due: Option<DateOrTime>,
 
     /// Task status (open | in_progress | done | cancelled | archived)
     #[arg(long)]
@@ -311,13 +311,13 @@ pub struct EntryFields {
     #[arg(long, value_name = "DATETIME", value_parser = parse_datetime)]
     pub task_closed_at: Option<NaiveDateTime>,
 
-    /// Event start date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
-    #[arg(long, value_name = "DATETIME", value_parser = parse_datetime)]
-    pub event_start: Option<NaiveDateTime>,
+    /// Event start date, or date and time (YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM)
+    #[arg(long, value_name = "DATE[THH:MM]", value_parser = DateOrTime::from_str)]
+    pub event_start: Option<DateOrTime>,
 
-    /// Event end date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM; date-only = 23:59)
-    #[arg(long, value_name = "DATETIME", value_parser = parse_datetime_end)]
-    pub event_end: Option<NaiveDateTime>,
+    /// Event end date, or date and time (YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM)
+    #[arg(long, value_name = "DATE[THH:MM]", value_parser = DateOrTime::from_str)]
+    pub event_end: Option<DateOrTime>,
 
     /// Hide the entry from default list/tree results (true) or reveal it (false).
     #[arg(long)]
@@ -353,12 +353,12 @@ impl EntryFields {
             slug: self.slug,
             // `--tags` with no value means "no tags", which is the empty list.
             tags: self.tags.map(|t| t.join(",")),
-            task_due: datetime(self.task_due),
+            task_due: self.task_due.map(|d| d.to_string()),
             task_status: self.task_status,
             task_started_at: datetime(self.task_started_at),
             task_closed_at: datetime(self.task_closed_at),
-            event_start: datetime(self.event_start),
-            event_end: datetime(self.event_end),
+            event_start: self.event_start.map(|d| d.to_string()),
+            event_end: self.event_end.map(|d| d.to_string()),
             hidden: self.hidden,
         }
     }
@@ -375,12 +375,12 @@ impl EntryFields {
             },
             slug: self.slug,
             tags: self.tags.map(|t| t.join(",")),
-            task_due: datetime(self.task_due),
+            task_due: self.task_due.map(|d| d.to_string()),
             task_status: self.task_status,
             task_started_at: datetime(self.task_started_at),
             task_closed_at: datetime(self.task_closed_at),
-            event_start: datetime(self.event_start),
-            event_end: datetime(self.event_end),
+            event_start: self.event_start.map(|d| d.to_string()),
+            event_end: self.event_end.map(|d| d.to_string()),
             hidden: self.hidden,
         }
     }
@@ -623,7 +623,7 @@ fn show(entry: &Entry) {
     if let Some(task) = &fm.task {
         let status = task.status.as_str();
         match task.due {
-            Some(d) => println!("task:     {status} (due {})", d.format("%Y-%m-%d")),
+            Some(d) => println!("task:     {status} (due {d})"),
             None => println!("task:     {status}"),
         }
         if let Some(sa) = task.started_at {
@@ -634,11 +634,7 @@ fn show(entry: &Entry) {
         }
     }
     if let Some(event) = &fm.event {
-        println!(
-            "event:    {} – {}",
-            event.start.format("%Y-%m-%d"),
-            event.end.format("%Y-%m-%d")
-        );
+        println!("event:    {} – {}", event.start, event.end);
     }
     println!();
     print!("{}", entry.body);

@@ -126,3 +126,37 @@ fn the_old_embedding_cache_command_is_gone() {
         "`cache embed` moved to the bridge (`embedding`)"
     );
 }
+
+fn modify_fields(args: &[&str]) -> sapphire_journal_cli::commands::entry::EntryFields {
+    let mut all = vec!["entry", "modify", "X"];
+    all.extend_from_slice(args);
+    match parse(&all).command {
+        Command::Entry {
+            action: sapphire_journal_cli::commands::entry::EntryCommand::Modify { fields, .. },
+        } => fields,
+        _ => panic!("expected entry modify"),
+    }
+}
+
+#[test]
+fn due_date_only_parses_as_date() {
+    let fields = modify_fields(&["--task-due", "2026-11-08"]);
+    let want = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+    assert_eq!(
+        fields.task_due,
+        Some(sapphire_journal_api::DateOrTime::Date(want))
+    );
+}
+
+#[test]
+fn event_start_with_time_parses_as_datetime() {
+    let fields = modify_fields(&["--event-start", "2026-11-08T09:00"]);
+    let want = chrono::NaiveDate::from_ymd_opt(2026, 11, 8)
+        .unwrap()
+        .and_hms_opt(9, 0, 0)
+        .unwrap();
+    assert_eq!(
+        fields.event_start,
+        Some(sapphire_journal_api::DateOrTime::DateTime(want))
+    );
+}

@@ -97,7 +97,7 @@ pub struct EntryNewParams {
     pub slug: Option<String>,
     /// Tags as comma-separated string (e.g. "work,project")
     pub tags: Option<String>,
-    /// Task due date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
+    /// Task due date/time, "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM"
     pub task_due: Option<String>,
     /// Task status (open | in_progress | done | cancelled | archived)
     pub task_status: Option<String>,
@@ -105,9 +105,9 @@ pub struct EntryNewParams {
     pub task_started_at: Option<String>,
     /// Task close date/time
     pub task_closed_at: Option<String>,
-    /// Event start date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
+    /// Event start date/time, "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM"
     pub event_start: Option<String>,
-    /// Event end date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
+    /// Event end date/time, "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM"
     pub event_end: Option<String>,
     /// Hide the entry from default list/tree results (true) or reveal it (false).
     pub hidden: Option<bool>,
@@ -127,7 +127,7 @@ pub struct EntryModifyParams {
     pub slug: Option<String>,
     /// New tags as comma-separated string. Pass empty string to clear all tags.
     pub tags: Option<String>,
-    /// Task due date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
+    /// Task due date/time, "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM"
     pub task_due: Option<String>,
     /// Task status (open | in_progress | done | cancelled | archived)
     pub task_status: Option<String>,
@@ -135,9 +135,9 @@ pub struct EntryModifyParams {
     pub task_started_at: Option<String>,
     /// Task close date/time
     pub task_closed_at: Option<String>,
-    /// Event start date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
+    /// Event start date/time, "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM"
     pub event_start: Option<String>,
-    /// Event end date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM)
+    /// Event end date/time, "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM"
     pub event_end: Option<String>,
     /// Hide the entry from default list/tree results (true) or reveal it (false).
     /// Omit to leave the existing value unchanged.

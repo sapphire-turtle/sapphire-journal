@@ -293,19 +293,19 @@ fn parse_entry_fields(
     event_end: Option<&str>,
     hidden: Option<bool>,
 ) -> anyhow::Result<EntryFields> {
-    use core_fields::{parse_optional_datetime, parse_optional_datetime_end, parse_tags_csv};
+    use core_fields::{parse_optional_date_or_time, parse_optional_datetime, parse_tags_csv};
     Ok(EntryFields {
         title: None,
         body: None,
         parent: UpdateOption::Unchanged,
         slug,
         tags: parse_tags_csv(tags.as_deref()),
-        task_due: parse_optional_datetime_end(task_due)?,
+        task_due: parse_optional_date_or_time(task_due)?,
         task_status,
         task_started_at: parse_optional_datetime(task_started_at)?,
         task_closed_at: parse_optional_datetime(task_closed_at)?,
-        event_start: parse_optional_datetime(event_start)?,
-        event_end: parse_optional_datetime_end(event_end)?,
+        event_start: parse_optional_date_or_time(event_start)?,
+        event_end: parse_optional_date_or_time(event_end)?,
         hidden,
     })
 }
@@ -396,10 +396,7 @@ impl JournalMethods {
             if let Some(task) = &fm.task {
                 let status = task.status.as_str();
                 match task.due {
-                    Some(d) => out.push_str(&format!(
-                        "task:     {status} (due {})\n",
-                        d.format("%Y-%m-%d")
-                    )),
+                    Some(d) => out.push_str(&format!("task:     {status} (due {d})\n")),
                     None => out.push_str(&format!("task:     {status}\n")),
                 }
                 if let Some(ca) = task.closed_at {
@@ -407,11 +404,7 @@ impl JournalMethods {
                 }
             }
             if let Some(event) = &fm.event {
-                out.push_str(&format!(
-                    "event:    {} – {}\n",
-                    event.start.format("%Y-%m-%d"),
-                    event.end.format("%Y-%m-%d")
-                ));
+                out.push_str(&format!("event:    {} – {}\n", event.start, event.end));
             }
             out.push('\n');
             out.push_str(&entry.body);
