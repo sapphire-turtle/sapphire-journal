@@ -1,3 +1,4 @@
+pub mod calendar;
 pub mod desktop_settings;
 pub mod entry_pane;
 pub mod journal_home;
