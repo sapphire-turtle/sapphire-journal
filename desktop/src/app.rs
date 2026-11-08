@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use corundum_framework_gui::datetime::Period;
 use grain_id::GrainId;
 use sapphire_framework::gui::{
-    Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
+    Action, Destination, Settings as FrameworkSettings, Shell, ShellApp, Side, eframe, egui,
 };
 use sapphire_journal_core::entry::{Entry, EntryHeader};
 
@@ -59,7 +59,8 @@ impl Window {
                 Destination::new(MainView::Kanban, icons::kanban(), "Kanban"),
             ],
             settings,
-        );
+        )
+        .with_actions(vec![Action::new("new_entry", icons::plus(), "New entry")]);
         let app = App::new(api, replies, journal_settings, ui_settings);
         // Open on the view last used.
         shell.open(app.home.view);
@@ -151,6 +152,13 @@ impl ShellApp<MainView> for App {
             ui.weak("No entry open.");
         }
         self.home.apply_pane_request(side);
+    }
+
+    fn action(&mut self, id: &'static str, side: &mut Side) {
+        if id == "new_entry" {
+            self.home.new_entry(None);
+            self.home.apply_pane_request(side);
+        }
     }
 }
 

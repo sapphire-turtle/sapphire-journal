@@ -21,7 +21,7 @@ use crate::period_nav::{shift, to_filter};
 use crate::screens::entry_pane;
 use crate::screens::kanban;
 use crate::settings::{ListLayout, MainView};
-use crate::widgets::buttons::{icon_btn, icon_text_btn, icon_toggle_btn};
+use crate::widgets::buttons::{icon_btn, icon_toggle_btn};
 
 /// The journal screen: a view of the entries. The open one is edited in the
 /// shell's side pane ([`entry_pane`]). Everything it shows comes from the
@@ -125,9 +125,6 @@ fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if icon_text_btn(ui, icons::plus(), "New Entry").clicked() {
-                home.new_entry(None);
-            }
             if icon_btn(ui, icons::refresh(), "Refresh entry list").clicked() {
                 home.reload();
             }
