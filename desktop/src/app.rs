@@ -17,6 +17,7 @@ use crate::api::{Api, Change, Reply};
 use crate::icons;
 use crate::period_nav::period_string;
 use crate::screens;
+use crate::screens::calendar::items::CalendarCache;
 use crate::screens::desktop_settings::DesktopSettingsPage;
 use crate::screens::settings_panel::{JournalSettingsPage, SettingsPanelState};
 use crate::settings::{ListLayout, MainView, Settings};
@@ -26,7 +27,7 @@ use crate::settings::{ListLayout, MainView, Settings};
 pub const REFRESH_EVERY: Duration = Duration::from_secs(10);
 
 /// The window: the framework's [`Shell`] around the journal. The rail
-/// switches between the journal's views (the list and the kanban), and opens
+/// switches between the journal's views (the list, the kanban and the calendar), and opens
 /// Settings at its foot, which chooses the journal, manages sync and holds
 /// the journal's own settings page. The open entry is edited in the shell's
 /// side pane, beside whichever view is open.
@@ -58,6 +59,7 @@ impl Window {
             vec![
                 Destination::new(MainView::List, icons::layout_list(), "List"),
                 Destination::new(MainView::Kanban, icons::kanban(), "Kanban"),
+                Destination::new(MainView::Calendar, icons::calendar(), "Calendar"),
             ],
             settings,
         )
@@ -197,7 +199,7 @@ pub struct HomeState {
     /// The open entry's form; `None` while it loads.
     pub editor: Option<EditorState>,
 
-    /// The list or the kanban.
+    /// The list, the kanban or the calendar.
     pub view: MainView,
     /// Hierarchical (tree) or flat display in the list view.
     pub list_layout: ListLayout,
@@ -215,6 +217,11 @@ pub struct HomeState {
     pub filter_text: String,
     /// The shared period the views show; `None` = all entries.
     pub period: Option<Period>,
+    /// The calendar's per-day index of the entries, rebuilt when they change.
+    pub calendar: CalendarCache,
+    /// The period the calendar last scrolled to its starting point for, so
+    /// it does so once per period, not every frame.
+    pub calendar_scrolled: Option<Period>,
     /// Sort field. One of "updated_at" | "created_at" | "title" | "id"
     /// | "task_due" | "event_start".
     pub sort_by: String,
@@ -279,6 +286,8 @@ impl HomeState {
             pane_request: None,
             filter_text: String::new(),
             period: settings.initial_period(chrono::Local::now().date_naive()),
+            calendar: CalendarCache::default(),
+            calendar_scrolled: None,
             sort_by: "updated_at".to_string(),
             sort_order: "desc".to_string(),
             confirm_delete: None,
@@ -434,6 +443,7 @@ impl App {
                     match result {
                         Ok(entries) => {
                             home.entries = entries;
+                            home.calendar.invalidate();
                             home.entries_error = None;
                         }
                         // Keep showing the last list: a server restart should

@@ -18,6 +18,7 @@ use sapphire_journal_core::{
 use crate::app::{App, HomeState, Pending};
 use crate::icons;
 use crate::period_nav::{shift, to_filter};
+use crate::screens::calendar;
 use crate::screens::entry_pane;
 use crate::screens::kanban;
 use crate::settings::{ListLayout, MainView};
@@ -45,10 +46,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
         ui.separator();
 
-        let filtered = filter_and_sort(home);
         match home.view {
-            MainView::List => draw_list(home, filtered, ui),
-            MainView::Kanban => kanban::show(home, &filtered, ui),
+            MainView::List => {
+                let filtered = filter_and_sort(home);
+                draw_list(home, filtered, ui)
+            }
+            MainView::Kanban => {
+                let filtered = filter_and_sort(home);
+                kanban::show(home, &filtered, ui)
+            }
+            MainView::Calendar => calendar::show(home, ui),
         }
     });
 }
@@ -625,6 +632,19 @@ fn draw_confirm_unsaved(home: &mut HomeState, ctx: &egui::Context) {
 
 // ── Filtering ────────────────────────────────────────────────────────
 
+/// Whether `h` matches the search text: a case-insensitive substring of the
+/// title, the id or a tag. A blank `needle` matches everything.
+pub fn matches_search(h: &EntryHeader, needle: &str) -> bool {
+    let needle = needle.trim().to_lowercase();
+    needle.is_empty()
+        || h.title().to_lowercase().contains(&needle)
+        || h.id().to_string().to_lowercase().contains(&needle)
+        || h.frontmatter
+            .tags
+            .iter()
+            .any(|t| t.to_lowercase().contains(&needle))
+}
+
 fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     let mut headers = home.entries.clone();
 
@@ -635,17 +655,7 @@ fn filter_and_sort(home: &HomeState) -> Vec<EntryHeader> {
     }
 
     // Substring filter on title / tags / id.
-    let needle = home.filter_text.trim().to_lowercase();
-    if !needle.is_empty() {
-        headers.retain(|h| {
-            h.title().to_lowercase().contains(&needle)
-                || h.id().to_string().to_lowercase().contains(&needle)
-                || h.frontmatter
-                    .tags
-                    .iter()
-                    .any(|t| t.to_lowercase().contains(&needle))
-        });
-    }
+    headers.retain(|h| matches_search(h, &home.filter_text));
 
     // Sort.
     match home.sort_by.as_str() {

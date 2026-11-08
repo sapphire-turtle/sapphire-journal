@@ -25,6 +25,9 @@ pub fn arrow_left() -> egui::ImageSource<'static> {
 pub fn calendar() -> egui::ImageSource<'static> {
     icon!("calendar")
 }
+pub fn check() -> egui::ImageSource<'static> {
+    icon!("circle-check")
+}
 pub fn chevron_down() -> egui::ImageSource<'static> {
     icon!("chevron-down")
 }
