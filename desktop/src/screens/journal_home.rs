@@ -17,7 +17,7 @@ use sapphire_journal_core::{
 
 use crate::app::{App, HomeState, Pending};
 use crate::icons;
-use crate::period_nav::to_filter;
+use crate::period_nav::{shift, to_filter};
 use crate::screens::entry_pane;
 use crate::screens::kanban;
 use crate::settings::{ListLayout, MainView};
@@ -66,6 +66,13 @@ pub fn show_dialogs(home: &mut HomeState, ctx: &egui::Context) {
 
 // ── Toolbar ──────────────────────────────────────────────────────────────────
 
+/// The ◀ ▶ icon, tinted like the other toolbar icons.
+fn step_icon(ui: &egui::Ui, src: egui::ImageSource<'static>) -> egui::Image<'static> {
+    egui::Image::new(src)
+        .fit_to_exact_size(egui::vec2(16.0, 16.0))
+        .tint(ui.visuals().text_color())
+}
+
 /// The view's toolbar: the journal menu, the period and search. Which view
 /// is shown is picked on the rail.
 fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
@@ -74,12 +81,36 @@ fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
         draw_journal_menu(app, ui);
         let home = &mut app.home;
         let entries = &home.entries;
+        let (prev, next) = home
+            .period
+            .as_ref()
+            .map_or((None, None), |p| (shift(p, -1), shift(p, 1)));
+        if ui
+            .add_enabled(
+                prev.is_some(),
+                egui::Button::image(step_icon(ui, icons::chevron_left())),
+            )
+            .on_hover_text("Previous period")
+            .clicked()
+        {
+            home.period = prev;
+        }
         ui.add(
             PeriodPickerButton::new("home_period", &mut home.period)
                 .clearable(true)
                 .day_badge(&|d| count_on(entries, d))
                 .config(datetime::config(ui.ctx())),
         );
+        if ui
+            .add_enabled(
+                next.is_some(),
+                egui::Button::image(step_icon(ui, icons::chevron_right())),
+            )
+            .on_hover_text("Next period")
+            .clicked()
+        {
+            home.period = next;
+        }
         ui.add(
             egui::TextEdit::singleline(&mut home.filter_text)
                 .hint_text("Search title / tag / id")
