@@ -2,7 +2,7 @@
 name = "sapphire-journal-server"
 edition.workspace = true
 # Released together with the editions that run it (release-plz.toml).
-version = "0.16.0"
+version = "0.17.0"
 description = "sapphire-journal's app server: the one process that reads and writes the journal, with its sync and MCP methods"
 license.workspace = true
 repository.workspace = true
@@ -14,9 +14,9 @@ default = ["redb-store"]
 redb-store = ["sapphire-framework/redb-store"]
 
 [dependencies]
-sapphire-journal-core = { path = "../sapphire-journal-core", version = "0.15.2" }
+sapphire-journal-core = { path = "../sapphire-journal-core", version = "0.16.0" }
 sapphire-journal-api  = { path = "../sapphire-journal-api",  version = "5.0.0" }
-sapphire-journal-mcp  = { path = "../sapphire-journal-mcp", version = "0.4.2" }
+sapphire-journal-mcp  = { path = "../sapphire-journal-mcp", version = "0.5.0" }
 sapphire-framework = { workspace = true, features = ["server", "ipc", "mcp"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
 serde.workspace = true

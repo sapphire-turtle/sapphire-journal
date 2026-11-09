@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.16.0...v0.17.0) - 2026-11-09
+
+### Added
+
+- *(desktop)* edit the body in corundum's Markdown editor
+- *(desktop)* one-row-per-day agenda
+- *(desktop)* month grid
+- *(desktop)* day and week timeline
+- *(desktop)* the calendar view on the rail
+- *(desktop)* calendar items and their per-day index
+- *(desktop)* date pickers with an all-day switch
+- *(desktop)* new entry from the rail
+- *(desktop)* a Desktop settings page with the startup period
+- *(desktop)* choose the period the window opens on
+- *(desktop)* step the period back and forward
+- *(desktop)* pick the period with corundum's period picker
+- *(core)* [**breaking**] due and event dates keep a date-only value as all day
+
+### Fixed
+
+- *(desktop)* calendar chips as the spec draws them; skip list filtering in the calendar
+- *(desktop)* follow DateOrTime
+
+### Other
+
+- CHANGELOG entry for the calendar view
+- CHANGELOG entries for the period controls, startup period and new-entry button
+- CHANGELOG entries for all-day dates
+
 ### Added
 
 - The period at the top of the window is picked with a calendar popup, and ◀ ▶ beside it step it back and forward by a day, week, month or year.
