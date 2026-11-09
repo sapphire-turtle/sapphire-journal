@@ -6,6 +6,7 @@
 //! which decides where it sits: a column at the right, a card over the view,
 //! or the view's place on a phone.
 
+use corundum_framework_gui::markdown;
 use sapphire_framework::gui::egui;
 
 use sapphire_journal_api::DateOrTime;
@@ -370,13 +371,20 @@ fn draw_form(home: &mut HomeState, ui: &mut egui::Ui) {
             });
             ui.add_space(8.0);
 
-            ui.label("Body (Markdown)");
-            ui.add(
-                egui::TextEdit::multiline(&mut editor.body)
-                    .desired_rows(20)
-                    .desired_width(f32::INFINITY)
-                    .code_editor(),
-            );
+            ui.label("Body");
+            // The toolbar finds the editor's selection by this id, so both share it, and
+            // each entry has its own (its undo and cursor are not carried to the next).
+            let body_id = ui.make_persistent_id(("entry_body", &editor.id));
+            markdown::toolbar(ui.ctx(), &mut editor.body, body_id).show(ui);
+            let output = markdown::MarkdownEditor::new(&mut editor.body)
+                .id(body_id)
+                .accessible_label("Body")
+                .desired_rows(20)
+                .show(ui);
+            // Ctrl / ⌘ + click on a link: the editor opens nothing itself.
+            if let Some(url) = output.link_clicked {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+            }
         });
 }
 
