@@ -4,7 +4,7 @@
 # `sapphire-journal-desktop`, and runs the same commands.
 name = "sapphire-journal-headless"
 edition.workspace = true
-version = "0.16.0"
+version = "0.17.0"
 description.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -16,7 +16,7 @@ name = "sapphire-journal"
 path = "src/main.rs"
 
 [dependencies]
-sapphire-journal-cli = { path = "../crates/sapphire-journal-cli", version = "0.16.0" }
+sapphire-journal-cli = { path = "../crates/sapphire-journal-cli", version = "0.17.0" }
 clap.workspace = true
 anyhow.workspace = true
 

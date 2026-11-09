@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-api-v4.0.0...sapphire-journal-api-v5.0.0) - 2026-11-09
+
+### Added
+
+- *(cli,mcp)* [**breaking**] a date without a time is stored as all day
+- *(core)* [**breaking**] due and event dates keep a date-only value as all day
+- *(api)* DateOrTime, a date (all day) or a date and time
+
 ## [4.0.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-api-v3.0.0...sapphire-journal-api-v4.0.0) - 2026-11-03
 
 ### Changed

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-server-v0.16.0...sapphire-journal-server-v0.17.0) - 2026-11-09
+
+### Added
+
+- *(core)* [**breaking**] due and event dates keep a date-only value as all day
+
 ## [0.16.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-server-v0.15.1...sapphire-journal-server-v0.16.0) - 2026-11-06
 
 ### Changed
