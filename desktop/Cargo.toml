@@ -42,8 +42,9 @@ sapphire-framework = { workspace = true, features = ["eframe", "ipc", "server"] 
 # The window's icon and app-menu entry (`LauncherSpec`'s icon), and whether this runs in a
 # package; the framework's version of it.
 corundum-framework-platform = "0.11.0"
-# The period picker (alumina-datetime), in corundum's look; the version sapphire-framework uses.
-corundum-framework-gui = { version = "0.11.0", default-features = false, features = ["datetime"] }
+# The period picker (alumina-datetime) and the body's Markdown editor (alumina-markdown, with
+# its toolbar), in corundum's look; the version sapphire-framework uses.
+corundum-framework-gui = { version = "0.11.0", default-features = false, features = ["datetime", "markdown-editor"] }
 egui_extras = { version = "0.37", features = ["svg"] }
 grain-id = { version = "0.15" }
 serde = { workspace = true }
