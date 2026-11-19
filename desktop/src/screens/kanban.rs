@@ -183,8 +183,10 @@ fn card_ui(ui: &mut egui::Ui, header: &EntryHeader, is_active: bool) {
                                 .tint(tint),
                         );
                         ui.weak(match due {
-                            DateOrTime::Date(d) => d.format("%Y-%m-%d").to_string(),
-                            DateOrTime::DateTime(t) => t.format("%Y-%m-%d %H:%M").to_string(),
+                            DateOrTime::Date(d) => d.strftime("%Y-%m-%d").to_string(),
+                            DateOrTime::Time(t) => sapphire_journal_api::time::local(t)
+                                .strftime("%Y-%m-%d %H:%M")
+                                .to_string(),
                         });
                     }
                     for tag in tags {

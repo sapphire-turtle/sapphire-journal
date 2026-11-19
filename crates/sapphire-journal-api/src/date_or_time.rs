@@ -1,35 +1,41 @@
-//! A frontmatter value that is either a date (all day) or a date and time.
+//! A frontmatter value that is either a date (all day) or a moment.
 
 use std::{borrow::Cow, fmt, str::FromStr};
 
-use chrono::{NaiveDate, NaiveDateTime};
+use jiff::Timestamp;
+use jiff::civil::Date;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-const DATE_FORMAT: &str = "%Y-%m-%d";
-const DATETIME_FORMAT: &str = "%Y-%m-%dT%H:%M";
+use crate::time;
 
-/// A date (meaning all day) or a date and time, kept as written.
+/// A date (meaning all day, wherever the reader is) or a moment.
+///
+/// Written as `2026-11-08` or `2026-11-08T10:00+09:00`. A time written
+/// without an offset (`2026-11-08T10:00`, as entries were before the move to
+/// jiff) is read in this host's time zone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DateOrTime {
-    Date(NaiveDate),
-    DateTime(NaiveDateTime),
+    Date(Date),
+    Time(Timestamp),
 }
 
 impl DateOrTime {
-    /// The first moment covered: `00:00:00` for a date, the time itself otherwise.
-    pub fn start_bound(&self) -> NaiveDateTime {
+    /// The first moment covered: the date's midnight here, the moment itself
+    /// otherwise.
+    pub fn start_bound(&self) -> Timestamp {
         match self {
-            Self::Date(d) => d.and_hms_opt(0, 0, 0).unwrap(),
-            Self::DateTime(dt) => *dt,
+            Self::Date(d) => local_or_now(d.at(0, 0, 0, 0)),
+            Self::Time(t) => *t,
         }
     }
 
-    /// The last moment covered: `23:59:59` for a date, the time itself otherwise.
-    pub fn end_bound(&self) -> NaiveDateTime {
+    /// The last moment covered: the date's `23:59:59` here, the moment itself
+    /// otherwise.
+    pub fn end_bound(&self) -> Timestamp {
         match self {
-            Self::Date(d) => d.and_hms_opt(23, 59, 59).unwrap(),
-            Self::DateTime(dt) => *dt,
+            Self::Date(d) => local_or_now(d.at(23, 59, 59, 0)),
+            Self::Time(t) => *t,
         }
     }
 
@@ -37,38 +43,42 @@ impl DateOrTime {
         matches!(self, Self::Date(_))
     }
 
-    pub fn date(&self) -> NaiveDate {
+    /// The date, or the moment's date in this host's time zone.
+    pub fn date(&self) -> Date {
         match self {
             Self::Date(d) => *d,
-            Self::DateTime(dt) => dt.date(),
+            Self::Time(t) => time::local_date(*t),
         }
     }
+}
+
+/// A wall-clock time here. Every civil date's midnight and 23:59:59 is a
+/// time somewhere, so this only fails for years jiff cannot represent.
+fn local_or_now(datetime: jiff::civil::DateTime) -> Timestamp {
+    time::from_local(datetime).unwrap_or_else(|_| Timestamp::now())
 }
 
 impl FromStr for DateOrTime {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        for fmt in [DATETIME_FORMAT, "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%.f"] {
-            if let Ok(dt) = NaiveDateTime::parse_from_str(s, fmt) {
-                return Ok(Self::DateTime(dt));
-            }
+        let s = s.trim();
+        if let Some(date) = time::parse_date(s) {
+            return Ok(Self::Date(date));
         }
-        NaiveDate::parse_from_str(s, DATE_FORMAT)
-            .map(Self::Date)
-            .map_err(|_| {
-                format!(
-                    "cannot parse `{s}` as a date or datetime; expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"
-                )
-            })
+        time::parse(s).map(Self::Time).map_err(|_| {
+            format!(
+                "cannot parse `{s}` as a date or datetime; expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"
+            )
+        })
     }
 }
 
 impl fmt::Display for DateOrTime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Date(d) => write!(f, "{}", d.format(DATE_FORMAT)),
-            Self::DateTime(dt) => write!(f, "{}", dt.format(DATETIME_FORMAT)),
+            Self::Date(d) => write!(f, "{}", d.strftime("%Y-%m-%d")),
+            Self::Time(t) => f.write_str(&time::format(*t)),
         }
     }
 }
@@ -95,7 +105,7 @@ impl JsonSchema for DateOrTime {
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({
             "type": "string",
-            "description": "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM"
+            "description": "YYYY-MM-DD (all day) or YYYY-MM-DDTHH:MM, with an offset (+09:00) or in the server's time zone"
         })
     }
 }
@@ -103,13 +113,12 @@ impl JsonSchema for DateOrTime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{NaiveDate, NaiveDateTime};
 
-    fn d(s: &str) -> NaiveDate {
-        NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    fn d(s: &str) -> Date {
+        s.parse().unwrap()
     }
-    fn dt(s: &str) -> NaiveDateTime {
-        NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap()
+    fn local(s: &str) -> Timestamp {
+        time::from_local(s.parse().unwrap()).unwrap()
     }
 
     #[test]
@@ -120,44 +129,58 @@ mod tests {
     }
 
     #[test]
-    fn midnight_keeps_its_time() {
-        let v: DateOrTime = "2026-11-08T00:00".parse().unwrap();
-        assert!(matches!(v, DateOrTime::DateTime(_)));
+    fn a_time_round_trips_with_its_offset() {
+        let v: DateOrTime = "2026-11-08T00:00+09:00".parse().unwrap();
+        assert_eq!(v, DateOrTime::Time("2026-11-07T15:00Z".parse().unwrap()));
         assert!(!v.is_date());
-        assert_eq!(v.to_string(), "2026-11-08T00:00");
+        assert_eq!(v.to_string().parse::<DateOrTime>().unwrap(), v);
     }
 
     #[test]
-    fn legacy_formats_read() {
-        for s in ["2026-11-08T09:30:15", "2026-11-08T09:30:15.250"] {
+    fn midnight_keeps_its_time() {
+        let v: DateOrTime = "2026-11-08T00:00".parse().unwrap();
+        assert_eq!(v, DateOrTime::Time(local("2026-11-08T00:00")));
+        assert!(!v.is_date());
+    }
+
+    #[test]
+    fn legacy_formats_read_in_the_local_time_zone() {
+        for s in [
+            "2026-11-08T09:30",
+            "2026-11-08T09:30:15",
+            "2026-11-08T09:30:15.250",
+        ] {
             let v: DateOrTime = s.parse().unwrap();
-            assert!(matches!(v, DateOrTime::DateTime(_)), "{s}");
-            assert_eq!(v.to_string(), "2026-11-08T09:30");
+            assert_eq!(v, DateOrTime::Time(local(s)), "{s}");
+            assert_eq!(v.date(), d("2026-11-08"));
         }
     }
 
     #[test]
     fn bounds_of_a_date() {
         let v = DateOrTime::Date(d("2026-11-08"));
-        assert_eq!(v.start_bound(), dt("2026-11-08T00:00:00"));
-        assert_eq!(v.end_bound(), dt("2026-11-08T23:59:59"));
+        assert_eq!(v.start_bound(), local("2026-11-08T00:00:00"));
+        assert_eq!(v.end_bound(), local("2026-11-08T23:59:59"));
         assert_eq!(v.date(), d("2026-11-08"));
     }
 
     #[test]
-    fn bounds_of_a_datetime_are_itself() {
-        let v = DateOrTime::DateTime(dt("2026-11-08T09:30:00"));
-        assert_eq!(v.start_bound(), dt("2026-11-08T09:30:00"));
-        assert_eq!(v.end_bound(), dt("2026-11-08T09:30:00"));
+    fn bounds_of_a_time_are_itself() {
+        let t = local("2026-11-08T09:30:00");
+        let v = DateOrTime::Time(t);
+        assert_eq!(v.start_bound(), t);
+        assert_eq!(v.end_bound(), t);
         assert_eq!(v.date(), d("2026-11-08"));
     }
 
     #[test]
     fn serde_round_trip() {
-        for s in ["2026-11-08", "2026-11-08T10:00"] {
+        for s in ["2026-11-08", "2026-11-08T10:00+09:00"] {
             let json = serde_json::to_string(&s).unwrap();
             let v: DateOrTime = serde_json::from_str(&json).unwrap();
-            assert_eq!(serde_json::to_string(&v).unwrap(), json);
+            let back: DateOrTime =
+                serde_json::from_str(&serde_json::to_string(&v).unwrap()).unwrap();
+            assert_eq!(back, v);
         }
     }
 

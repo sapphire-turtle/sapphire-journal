@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use jiff::civil::{Date, DateTime, Time};
 use sapphire_journal_api::DateOrTime;
 use sapphire_journal_core::entry::EntryHeader;
 
@@ -28,30 +28,32 @@ pub struct CalendarItem {
 }
 
 impl CalendarItem {
-    /// The bounds of the item. An end before the start is clamped to it, so a
-    /// hand-edited event lasts from its start to its start.
-    pub fn span(&self) -> (NaiveDateTime, NaiveDateTime) {
+    /// The bounds of the item, as wall-clock times here. An end before the
+    /// start is clamped to it, so a hand-edited event lasts from its start to
+    /// its start.
+    pub fn span(&self) -> (DateTime, DateTime) {
+        let here = |t| sapphire_journal_api::time::local(t).datetime();
         match &self.kind {
             ItemKind::Event { start, end } => {
-                let s = start.start_bound();
-                (s, end.end_bound().max(s))
+                let s = here(start.start_bound());
+                (s, here(end.end_bound()).max(s))
             }
-            ItemKind::Due(d) if d.is_date() => (d.start_bound(), d.end_bound()),
-            ItemKind::Due(d) => (d.start_bound(), d.start_bound()),
+            ItemKind::Due(d) if d.is_date() => (here(d.start_bound()), here(d.end_bound())),
+            ItemKind::Due(d) => (here(d.start_bound()), here(d.start_bound())),
         }
     }
 
-    pub fn first_day(&self) -> NaiveDate {
+    pub fn first_day(&self) -> Date {
         self.span().0.date()
     }
 
     /// The last day the item shows on. A timed end at exactly 00:00 on a
     /// later day belongs to the day before, so it leaves no empty sliver.
-    pub fn last_day(&self) -> NaiveDate {
+    pub fn last_day(&self) -> Date {
         let first = self.first_day();
         let end = self.span().1;
-        if end.date() > first && end.time() == NaiveTime::MIN {
-            end.date().pred_opt().unwrap_or(first).max(first)
+        if end.date() > first && end.time() == Time::midnight() {
+            end.date().yesterday().ok().unwrap_or(first).max(first)
         } else {
             end.date()
         }
@@ -94,7 +96,7 @@ pub fn items_of(header: &EntryHeader) -> Vec<CalendarItem> {
 #[derive(Debug, Default)]
 pub struct CalendarIndex {
     items: Vec<CalendarItem>,
-    by_day: BTreeMap<NaiveDate, Vec<usize>>,
+    by_day: BTreeMap<Date, Vec<usize>>,
     spans: Vec<usize>,
 }
 
@@ -117,7 +119,7 @@ impl CalendarIndex {
     }
 
     /// The items on `day`: all-day first, then by start, then by title.
-    pub fn on(&self, day: NaiveDate) -> Vec<&CalendarItem> {
+    pub fn on(&self, day: Date) -> Vec<&CalendarItem> {
         let one_day = self.by_day.get(&day).into_iter().flatten();
         let spanning = self
             .spans
@@ -164,12 +166,12 @@ mod tests {
     use super::*;
     use sapphire_journal_core::entry::{EventMetaView, FrontmatterView, TaskMetaView};
 
-    fn day(d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
+    fn day(d: i8) -> Date {
+        jiff::civil::date(2026, 11, d)
     }
 
-    fn at(d: u32, h: u32, m: u32) -> NaiveDateTime {
-        day(d).and_hms_opt(h, m, 0).unwrap()
+    fn at(d: i8, h: i8, m: i8) -> jiff::Timestamp {
+        sapphire_journal_api::time::from_local(day(d).at(h, m, 0, 0)).unwrap()
     }
 
     fn header(
@@ -209,11 +211,11 @@ mod tests {
         header(title, None, Some((due, status)))
     }
 
-    fn dt(d: u32, h: u32, m: u32) -> DateOrTime {
-        DateOrTime::DateTime(at(d, h, m))
+    fn dt(d: i8, h: i8, m: i8) -> DateOrTime {
+        DateOrTime::Time(at(d, h, m))
     }
 
-    fn date(d: u32) -> DateOrTime {
+    fn date(d: i8) -> DateOrTime {
         DateOrTime::Date(day(d))
     }
 
@@ -284,12 +286,12 @@ mod tests {
 
     #[test]
     fn long_span_is_not_expanded() {
-        let end = DateOrTime::Date(NaiveDate::from_ymd_opt(2099, 12, 31).unwrap());
-        let start = DateOrTime::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        let end = DateOrTime::Date(jiff::civil::date(2099, 12, 31));
+        let start = DateOrTime::Date(jiff::civil::date(2026, 1, 1));
         let idx = CalendarIndex::build(&[event("long", start, end)], "");
         assert!(idx.by_day.is_empty());
         assert_eq!(idx.spans.len(), 1);
-        let far = NaiveDate::from_ymd_opt(2050, 6, 1).unwrap();
+        let far = jiff::civil::date(2050, 6, 1);
         assert_eq!(idx.on(far).len(), 1);
     }
 

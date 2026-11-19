@@ -2,12 +2,16 @@
 //! to the core filter and to the string saved in `settings.toml`.
 
 use corundum_framework_gui::datetime::{self, Period};
+use jiff::ToSpan;
 
 /// The core filter for `period`: its first day at 00:00:00 through its last day at 23:59:59.
 pub fn to_filter(period: &Period) -> sapphire_journal_core::period::Period {
+    let here = |d: jiff::civil::DateTime| {
+        sapphire_journal_api::time::from_local(d).unwrap_or_else(|_| jiff::Timestamp::now())
+    };
     sapphire_journal_core::period::Period::Range(
-        period.first_day().and_hms_opt(0, 0, 0).unwrap(),
-        period.last_day().and_hms_opt(23, 59, 59).unwrap(),
+        here(period.first_day().at(0, 0, 0, 0)),
+        here(period.last_day().at(23, 59, 59, 0)),
     )
 }
 
@@ -15,14 +19,15 @@ pub fn to_filter(period: &Period) -> sapphire_journal_core::period::Period {
 /// which has no unit to step by, or when the result is out of range.
 pub fn shift(period: &Period, by: i32) -> Option<Period> {
     match period {
-        Period::Day(d) => d
-            .checked_add_signed(chrono::Duration::days(i64::from(by)))
-            .map(Period::Day),
+        Period::Day(d) => d.checked_add((i64::from(by)).days()).ok().map(Period::Day),
         Period::Week { start } => start
-            .checked_add_signed(chrono::Duration::days(7 * i64::from(by)))
+            .checked_add((7 * i64::from(by)).days())
+            .ok()
             .map(|start| Period::Week { start }),
         Period::Month { year, month } => {
-            let first = chrono::NaiveDate::from_ymd_opt(*year, *month, 1)?;
+            let first =
+                jiff::civil::Date::new(i16::try_from(*year).ok()?, i8::try_from(*month).ok()?, 1)
+                    .ok()?;
             Some(Period::month_of(datetime::calc::add_months(first, by)))
         }
         Period::Year(y) => y.checked_add(by).map(Period::Year),
@@ -47,10 +52,10 @@ pub fn parse_period_string(s: &str) -> Option<Option<Period>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use jiff::civil::Date;
 
-    fn d(y: i32, m: u32, day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    fn d(y: i16, m: i8, day: i8) -> Date {
+        Date::new(y, m, day).unwrap()
     }
 
     #[test]
@@ -107,13 +112,14 @@ mod tests {
 
     #[test]
     fn filter_of_a_week() {
-        let start = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let start = jiff::civil::date(2026, 11, 2);
         let sapphire_journal_core::period::Period::Range(a, b) = to_filter(&Period::Week { start })
         else {
             panic!("not a range");
         };
-        assert_eq!(a.to_string(), "2026-11-02 00:00:00");
-        assert_eq!(b.to_string(), "2026-11-08 23:59:59");
+        let here = |d| sapphire_journal_api::time::from_local(d).unwrap();
+        assert_eq!(a, here(start.at(0, 0, 0, 0)));
+        assert_eq!(b, here(jiff::civil::date(2026, 11, 8).at(23, 59, 59, 0)));
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! type/freshness slots: a task can be both `in_progress` *and* `stale`, or a
 //! note can be `hidden`. They are appended after the slot-1/slot-2 flags.
 
-use chrono::{Duration, Local, NaiveDateTime};
+use jiff::{SignedDuration, Timestamp};
 
 use crate::entry::{EventMetaView, TaskMetaView};
 
@@ -36,7 +36,7 @@ pub fn task_status_label(status: &str) -> &'static str {
 /// Returns `true` when an incomplete task is past due at `now`.
 ///
 /// A date-only due date is overdue only once its day has ended (`23:59:59`).
-pub fn task_is_overdue(task: &TaskMetaView, now: NaiveDateTime) -> bool {
+pub fn task_is_overdue(task: &TaskMetaView, now: Timestamp) -> bool {
     task.closed_at.is_none() && task.due.is_some_and(|due| due.end_bound() < now)
 }
 
@@ -47,11 +47,11 @@ pub fn task_is_overdue(task: &TaskMetaView, now: NaiveDateTime) -> bool {
 /// (done/cancelled/archived) is never stale regardless of age.
 pub fn is_stale(
     task: Option<&TaskMetaView>,
-    updated_at: NaiveDateTime,
-    stale_after: Duration,
+    updated_at: Timestamp,
+    stale_after: SignedDuration,
 ) -> bool {
     let incomplete_task = task.is_some_and(|t| t.closed_at.is_none());
-    incomplete_task && (Local::now().naive_local() - updated_at) >= stale_after
+    incomplete_task && Timestamp::now().duration_since(updated_at) >= stale_after
 }
 
 /// Returns the computed [`EntryFlag`]s for an entry.
@@ -65,20 +65,20 @@ pub fn entry_flags(
     task: Option<&TaskMetaView>,
     event: Option<&EventMetaView>,
     hidden: bool,
-    created_at: NaiveDateTime,
-    updated_at: NaiveDateTime,
-    stale_after: Duration,
+    created_at: Timestamp,
+    updated_at: Timestamp,
+    stale_after: SignedDuration,
 ) -> Vec<EntryFlag> {
     let mut flags = Vec::new();
 
-    let now = Local::now().naive_local();
+    let now = Timestamp::now();
 
     // Slot 1: overdue (highest priority) > created <24h > updated <24h
     let is_overdue = task.is_some_and(|t| task_is_overdue(t, now));
     if is_overdue {
         flags.push(EntryFlag::Overdue);
     } else {
-        let threshold = now - Duration::hours(24);
+        let threshold = now - jiff::SignedDuration::from_hours(24);
         if created_at >= threshold {
             flags.push(EntryFlag::New);
         } else if updated_at >= threshold {
@@ -135,7 +135,7 @@ mod tests {
     }
 
     /// A closed task (`closed_at` present).
-    fn closed_task(closed_at: chrono::NaiveDateTime) -> TaskMetaView {
+    fn closed_task(closed_at: jiff::Timestamp) -> TaskMetaView {
         TaskMetaView {
             due: None,
             status: "done".into(),
@@ -144,35 +144,35 @@ mod tests {
         }
     }
 
-    fn event(start: chrono::NaiveDateTime, end: chrono::NaiveDateTime) -> EventMetaView {
+    fn event(start: jiff::Timestamp, end: jiff::Timestamp) -> EventMetaView {
         EventMetaView {
-            start: sapphire_journal_api::DateOrTime::DateTime(start),
-            end: sapphire_journal_api::DateOrTime::DateTime(end),
+            start: sapphire_journal_api::DateOrTime::Time(start),
+            end: sapphire_journal_api::DateOrTime::Time(end),
         }
     }
 
-    fn at(s: &str) -> chrono::NaiveDateTime {
-        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap()
+    fn at(s: &str) -> jiff::Timestamp {
+        sapphire_journal_api::time::from_local(s.parse().unwrap()).unwrap()
     }
 
     #[test]
     fn date_due_today_is_not_overdue() {
         let mut t = open_task();
-        t.due = Some(sapphire_journal_api::DateOrTime::Date(
-            chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
-        ));
+        t.due = Some(sapphire_journal_api::DateOrTime::Date(jiff::civil::date(
+            2026, 11, 8,
+        )));
         assert!(!task_is_overdue(&t, at("2026-11-08T18:00:00")));
         assert!(task_is_overdue(&t, at("2026-11-09T00:00:01")));
     }
 
-    fn now() -> chrono::NaiveDateTime {
-        Local::now().naive_local()
+    fn now() -> jiff::Timestamp {
+        Timestamp::now()
     }
 
     #[test]
     fn incomplete_task_exactly_at_threshold_is_stale() {
         // `updated_at` exactly `stale_after` old: `now - updated >= stale_after` holds.
-        let stale_after = Duration::days(30);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
         let updated_at = now() - stale_after;
         assert!(is_stale(Some(&open_task()), updated_at, stale_after));
     }
@@ -180,22 +180,22 @@ mod tests {
     #[test]
     fn incomplete_task_one_day_before_threshold_is_not_stale() {
         // One day short of the threshold -> not yet stale.
-        let stale_after = Duration::days(30);
-        let updated_at = now() - Duration::days(29);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
+        let updated_at = now() - jiff::SignedDuration::from_hours(24 * 29);
         assert!(!is_stale(Some(&open_task()), updated_at, stale_after));
     }
 
     #[test]
     fn incomplete_task_beyond_threshold_is_stale() {
-        let stale_after = Duration::days(30);
-        let updated_at = now() - Duration::days(60);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
+        let updated_at = now() - jiff::SignedDuration::from_hours(24 * 60);
         assert!(is_stale(Some(&open_task()), updated_at, stale_after));
     }
 
     #[test]
     fn closed_task_is_never_stale_regardless_of_age() {
-        let stale_after = Duration::days(30);
-        let updated_at = now() - Duration::days(365);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
+        let updated_at = now() - jiff::SignedDuration::from_hours(24 * 365);
         assert!(!is_stale(
             Some(&closed_task(updated_at)),
             updated_at,
@@ -205,18 +205,22 @@ mod tests {
 
     #[test]
     fn event_and_note_are_never_stale() {
-        let stale_after = Duration::days(30);
-        let old = now() - Duration::days(365);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
+        let old = now() - jiff::SignedDuration::from_hours(24 * 365);
         // No task at all (event/note) -> never stale (is_stale only inspects the task).
         assert!(!is_stale(None, old, stale_after));
-        assert!(!is_stale(None, now() - Duration::days(1), stale_after));
+        assert!(!is_stale(
+            None,
+            now() - jiff::SignedDuration::from_hours(24),
+            stale_after
+        ));
         let _ = event(old, old);
     }
 
     #[test]
     fn entry_flags_appends_stale_for_old_incomplete_task() {
-        let stale_after = Duration::days(30);
-        let updated_at = now() - Duration::days(40);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
+        let updated_at = now() - jiff::SignedDuration::from_hours(24 * 40);
         let flags = entry_flags(
             Some(&open_task()),
             None,
@@ -231,7 +235,7 @@ mod tests {
 
     #[test]
     fn entry_flags_marks_hidden_true_as_hidden() {
-        let stale_after = Duration::days(30);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
         let now_dt = now();
         let flags = entry_flags(
             None,
@@ -246,7 +250,7 @@ mod tests {
 
     #[test]
     fn entry_flags_does_not_mark_hidden_false_or_absent_as_hidden() {
-        let stale_after = Duration::days(30);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
         let now_dt = now();
         let flags = entry_flags(None, None, false, now_dt, now_dt, stale_after);
         assert!(!flags.contains(&EntryFlag::Hidden));
@@ -256,8 +260,8 @@ mod tests {
     #[test]
     fn entry_flags_stale_and_hidden_are_both_appended_for_a_stale_hidden_task() {
         // A stale, explicitly-hidden open task carries both orthogonal flags.
-        let stale_after = Duration::days(30);
-        let updated_at = now() - Duration::days(40);
+        let stale_after = jiff::SignedDuration::from_hours(24 * 30);
+        let updated_at = now() - jiff::SignedDuration::from_hours(24 * 40);
         let flags = entry_flags(
             Some(&open_task()),
             None,

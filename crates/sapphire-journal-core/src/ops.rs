@@ -12,8 +12,8 @@ use std::{
 
 use indexmap::IndexMap;
 
-use chrono::{Datelike as _, Duration, NaiveDateTime};
 use grain_id::GrainId;
+use jiff::Timestamp;
 use rusqlite::Connection;
 use sapphire_journal_api::DateOrTime;
 
@@ -297,7 +297,7 @@ impl EntryFilter {
 
                 // task_overdue: incomplete task with due < now
                 if self.fields.task_overdue {
-                    let now = chrono::Local::now().naive_local();
+                    let now = jiff::Timestamp::now();
                     let is_overdue = entry.frontmatter.task.as_ref().is_some_and(|t| {
                         t.closed_at.is_none() && t.due.is_some_and(|due| due.end_bound() < now)
                     });
@@ -362,7 +362,7 @@ impl EntryFilter {
             || !is_stale(
                 entry.frontmatter.task.as_ref(),
                 entry.frontmatter.updated_at,
-                Duration::days(self.stale_after_days as i64),
+                jiff::SignedDuration::from_hours(24 * (self.stale_after_days as i64)),
             );
 
         (
@@ -651,8 +651,8 @@ pub struct EntryFields {
     pub tags: Option<Vec<String>>,
     pub task_due: Option<DateOrTime>,
     pub task_status: Option<String>,
-    pub task_started_at: Option<NaiveDateTime>,
-    pub task_closed_at: Option<NaiveDateTime>,
+    pub task_started_at: Option<Timestamp>,
+    pub task_closed_at: Option<Timestamp>,
     pub event_start: Option<DateOrTime>,
     pub event_end: Option<DateOrTime>,
     /// Hidden flag. `None` = leave unchanged (update) / don't write (create);
@@ -677,7 +677,7 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
     let journal = &state.journal;
     let conn = state.open_conn()?;
     let id = GrainId::now_unix();
-    let year = chrono::Local::now().year();
+    let year = sapphire_journal_api::time::local(jiff::Timestamp::now()).year();
 
     let title = fields.title.unwrap_or_default();
     let body = fields.body.unwrap_or_default();
@@ -723,10 +723,10 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
         let in_progress = status == "in_progress";
         let started_at = fields
             .task_started_at
-            .or_else(|| in_progress.then(|| chrono::Local::now().naive_local()));
+            .or_else(|| in_progress.then(jiff::Timestamp::now));
         let closed_at = fields
             .task_closed_at
-            .or_else(|| inactive.then(|| chrono::Local::now().naive_local()));
+            .or_else(|| inactive.then(jiff::Timestamp::now));
         Some(TaskMeta {
             due: fields.task_due,
             status,
@@ -750,7 +750,7 @@ pub fn create_entry(state: &JournalState, fields: EntryFields) -> Result<PathBuf
         None
     };
 
-    let now = chrono::Local::now().naive_local();
+    let now = jiff::Timestamp::now();
     let frontmatter = Frontmatter {
         id,
         parent_id,
@@ -855,10 +855,10 @@ pub fn update_entry(
             let inactive = matches!(s.as_str(), "done" | "cancelled" | "archived");
             task.status = s;
             if in_progress && task.started_at.is_none() && fields.task_started_at.is_none() {
-                task.started_at = Some(chrono::Local::now().naive_local());
+                task.started_at = Some(jiff::Timestamp::now());
             }
             if inactive && task.closed_at.is_none() && fields.task_closed_at.is_none() {
-                task.closed_at = Some(chrono::Local::now().naive_local());
+                task.closed_at = Some(jiff::Timestamp::now());
             }
         }
         if let Some(sa) = fields.task_started_at {
@@ -920,9 +920,9 @@ pub fn resolve_parent_id(conn: &Connection, parent: Option<&EntryRef>) -> Result
 /// When `parent_id` is `Some`, the `parent_id` field is included in the frontmatter.
 pub fn prepare_new_entry(journal: &Journal, parent_id: Option<GrainId>) -> Result<PathBuf> {
     let id = GrainId::now_unix();
-    let year = chrono::Local::now().year();
-    let now = chrono::Local::now().naive_local();
-    let now_fmt = now.format("%Y-%m-%dT%H:%M");
+    let year = sapphire_journal_api::time::local(jiff::Timestamp::now()).year();
+    let now = jiff::Timestamp::now();
+    let now_fmt = sapphire_journal_api::time::format(now);
 
     let dir = journal.entries_root()?.join(year.to_string());
     std::fs::create_dir_all(&dir)?;
@@ -1024,7 +1024,7 @@ fn sync_started_at(entry: &mut Entry) {
         && task.status == "in_progress"
         && task.started_at.is_none()
     {
-        task.started_at = Some(chrono::Local::now().naive_local());
+        task.started_at = Some(jiff::Timestamp::now());
     }
 }
 
@@ -1033,7 +1033,7 @@ fn sync_closed_at(entry: &mut Entry) {
     if let Some(task) = &mut entry.frontmatter.task {
         let is_closed = matches!(task.status.as_str(), "done" | "cancelled" | "archived");
         if is_closed && task.closed_at.is_none() {
-            task.closed_at = Some(chrono::Local::now().naive_local());
+            task.closed_at = Some(jiff::Timestamp::now());
         }
     }
 }
@@ -1045,7 +1045,7 @@ fn sync_closed_at(entry: &mut Entry) {
 fn fix_entry_mut(entry: &mut Entry) -> Result<Option<PathBuf>> {
     sync_started_at(entry);
     sync_closed_at(entry);
-    entry.frontmatter.updated_at = chrono::Local::now().naive_local();
+    entry.frontmatter.updated_at = jiff::Timestamp::now();
     std::fs::write(&entry.path, render_entry(entry))?;
 
     let expected = entry_filename_from_frontmatter(entry.frontmatter.id, &entry.frontmatter);
@@ -1061,7 +1061,7 @@ fn fix_entry_mut(entry: &mut Entry) -> Result<Option<PathBuf>> {
             .and_then(|n| n.to_str())
             .unwrap_or("");
         if current_year_name.len() == 4 && current_year_name.chars().all(|c| c.is_ascii_digit()) {
-            let year = entry.frontmatter.created_at.year();
+            let year = sapphire_journal_api::time::local(entry.frontmatter.created_at).year();
             journal_root.join(year.to_string())
         } else {
             current_dir.to_path_buf()
@@ -1121,17 +1121,16 @@ pub(crate) fn entry_filename_from_frontmatter(id: GrainId, fm: &Frontmatter) -> 
 mod tests {
     use super::*;
     use crate::entry::{EntryHeader, FrontmatterView, TaskMetaView};
-    use chrono::Local;
 
-    fn now() -> chrono::NaiveDateTime {
-        Local::now().naive_local()
+    fn now() -> jiff::Timestamp {
+        Timestamp::now()
     }
 
     /// Build a minimal [EntryHeader] with the given task/hidden/updated_at.
     fn header(
         task: Option<TaskMetaView>,
         hidden: Option<bool>,
-        updated_at: chrono::NaiveDateTime,
+        updated_at: jiff::Timestamp,
     ) -> EntryHeader {
         let frontmatter = FrontmatterView {
             id: grain_id::GrainId::now_unix(),
@@ -1152,18 +1151,18 @@ mod tests {
         }
     }
 
-    fn day(d: u32) -> chrono::NaiveDate {
-        chrono::NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
+    fn day(d: i8) -> jiff::civil::Date {
+        jiff::civil::date(2026, 11, d)
     }
 
-    fn at(d: u32, h: u32, m: u32) -> chrono::NaiveDateTime {
-        day(d).and_hms_opt(h, m, 0).unwrap()
+    fn at(d: i8, h: i8, m: i8) -> jiff::Timestamp {
+        sapphire_journal_api::time::from_local(day(d).at(h, m, 0, 0)).unwrap()
     }
 
     fn today_period() -> Period {
         Period::Range(
-            day(8).and_hms_opt(0, 0, 0).unwrap(),
-            day(8).and_hms_opt(23, 59, 59).unwrap(),
+            sapphire_journal_api::time::from_local(day(8).at(0, 0, 0, 0)).unwrap(),
+            sapphire_journal_api::time::from_local(day(8).at(23, 59, 59, 0)).unwrap(),
         )
     }
 
@@ -1204,7 +1203,10 @@ mod tests {
             },
             ..Default::default()
         };
-        let day_before = Period::Range(at(7, 0, 0), day(7).and_hms_opt(23, 59, 59).unwrap());
+        let day_before = Period::Range(
+            at(7, 0, 0),
+            sapphire_journal_api::time::from_local(day(7).at(23, 59, 59, 0)).unwrap(),
+        );
         assert!(!over(day_before).matches(&h).0);
         assert!(over(today_period()).matches(&h).0);
     }
@@ -1212,8 +1214,8 @@ mod tests {
     #[test]
     fn timed_event_ending_yesterday_is_out() {
         let h = event_header(
-            DateOrTime::DateTime(at(7, 22, 0)),
-            DateOrTime::DateTime(at(7, 23, 59)),
+            DateOrTime::Time(at(7, 22, 0)),
+            DateOrTime::Time(at(7, 23, 59)),
         );
         let f = EntryFilter {
             period: Some(today_period()),
@@ -1231,8 +1233,8 @@ mod tests {
         let h = event_header(DateOrTime::Date(day(7)), DateOrTime::Date(day(8)));
         for d in [7, 8] {
             let p = Period::Range(
-                day(d).and_hms_opt(0, 0, 0).unwrap(),
-                day(d).and_hms_opt(23, 59, 59).unwrap(),
+                sapphire_journal_api::time::from_local(day(d).at(0, 0, 0, 0)).unwrap(),
+                sapphire_journal_api::time::from_local(day(d).at(23, 59, 59, 0)).unwrap(),
             );
             let f = EntryFilter {
                 period: Some(p),
@@ -1282,7 +1284,7 @@ mod tests {
         }
     }
 
-    fn closed_task(closed_at: chrono::NaiveDateTime) -> TaskMetaView {
+    fn closed_task(closed_at: jiff::Timestamp) -> TaskMetaView {
         TaskMetaView {
             due: None,
             status: "done".into(),
@@ -1297,7 +1299,11 @@ mod tests {
             stale_after_days: 30,
             ..Default::default()
         };
-        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        let h = header(
+            Some(open_task()),
+            None,
+            now() - jiff::SignedDuration::from_hours(24 * 40),
+        );
         assert!(
             !f.matches(&h).0,
             "a stale incomplete task must be excluded by default"
@@ -1311,7 +1317,11 @@ mod tests {
             include_stale: true,
             ..Default::default()
         };
-        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        let h = header(
+            Some(open_task()),
+            None,
+            now() - jiff::SignedDuration::from_hours(24 * 40),
+        );
         assert!(f.matches(&h).0, "include_stale must restore a stale task");
     }
 
@@ -1340,7 +1350,7 @@ mod tests {
 
     #[test]
     fn custom_stale_after_days_threshold_takes_effect() {
-        let updated = now() - Duration::days(10);
+        let updated = now() - jiff::SignedDuration::from_hours(24 * 10);
         // 10 days old: stale under a 5-day threshold, not under a 30-day one.
         let strict = EntryFilter {
             stale_after_days: 5,
@@ -1370,7 +1380,11 @@ mod tests {
             stale_after_days: 30,
             ..Default::default()
         };
-        let h = header(Some(open_task()), None, now() - Duration::days(40));
+        let h = header(
+            Some(open_task()),
+            None,
+            now() - jiff::SignedDuration::from_hours(24 * 40),
+        );
         assert!(
             !f.matches(&h).0,
             "the stale gate must override other match reasons"
@@ -1383,7 +1397,7 @@ mod tests {
             stale_after_days: 30,
             ..Default::default()
         };
-        let old = now() - Duration::days(400);
+        let old = now() - jiff::SignedDuration::from_hours(24 * 400);
         let h = header(Some(closed_task(old)), None, old);
         assert!(
             f.matches(&h).0,

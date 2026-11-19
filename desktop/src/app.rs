@@ -285,7 +285,9 @@ impl HomeState {
             show_filters: false,
             pane_request: None,
             filter_text: String::new(),
-            period: settings.initial_period(chrono::Local::now().date_naive()),
+            period: settings.initial_period(sapphire_journal_api::time::local_date(
+                jiff::Timestamp::now(),
+            )),
             calendar: CalendarCache::default(),
             calendar_scrolled: None,
             sort_by: "updated_at".to_string(),

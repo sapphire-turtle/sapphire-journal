@@ -14,8 +14,8 @@ categories = ["network-programming"]
 # The framework's methods every app server serves (`workspace.*`, `sync.*`),
 # re-exported as `server`: a client finds all it can ask the journal's server here.
 # Re-exported, so its major moves this crate's (and so `API_VERSION`) with it.
-sapphire-server-api = { package = "sapphire-framework-server-api", version = "6.0" }
-chrono.workspace = true
+sapphire-server-api = { package = "sapphire-framework-server-api", version = "7.0" }
+jiff.workspace = true
 grain-id = { version = "0.15", features = ["serde", "schemars"] }
 indexmap.workspace = true
 schemars.workspace = true

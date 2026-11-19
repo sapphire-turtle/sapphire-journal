@@ -141,7 +141,7 @@ fn modify_fields(args: &[&str]) -> sapphire_journal_cli::commands::entry::EntryF
 #[test]
 fn due_date_only_parses_as_date() {
     let fields = modify_fields(&["--task-due", "2026-11-08"]);
-    let want = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+    let want = jiff::civil::date(2026, 11, 8);
     assert_eq!(
         fields.task_due,
         Some(sapphire_journal_api::DateOrTime::Date(want))
@@ -151,12 +151,12 @@ fn due_date_only_parses_as_date() {
 #[test]
 fn event_start_with_time_parses_as_datetime() {
     let fields = modify_fields(&["--event-start", "2026-11-08T09:00"]);
-    let want = chrono::NaiveDate::from_ymd_opt(2026, 11, 8)
-        .unwrap()
-        .and_hms_opt(9, 0, 0)
-        .unwrap();
+    // A time without an offset is read in this host's time zone.
+    let want =
+        sapphire_journal_api::time::from_local(jiff::civil::date(2026, 11, 8).at(9, 0, 0, 0))
+            .unwrap();
     assert_eq!(
         fields.event_start,
-        Some(sapphire_journal_api::DateOrTime::DateTime(want))
+        Some(sapphire_journal_api::DateOrTime::Time(want))
     );
 }

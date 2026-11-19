@@ -1,7 +1,8 @@
 //! The month layout of the calendar: a 7×6 grid of days.
 
-use chrono::{Datelike, Days, Local, NaiveDate};
 use corundum_framework_gui::datetime::{self, Period};
+use jiff::ToSpan;
+use jiff::civil::Date;
 use sapphire_framework::gui::egui;
 
 use super::chip::{chip, chip_label, open_day};
@@ -13,10 +14,14 @@ const ROWS: usize = 6;
 const CELL_PADDING: f32 = 2.0;
 
 /// The first cell of the month grid: the Monday on or before the 1st.
-pub fn grid_start(year: i32, month: u32) -> NaiveDate {
-    let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap_or(NaiveDate::MIN);
-    let back = u64::from(first.weekday().num_days_from_monday());
-    first.checked_sub_days(Days::new(back)).unwrap_or(first)
+pub fn grid_start(year: i32, month: u32) -> Date {
+    let first = i16::try_from(year)
+        .ok()
+        .zip(i8::try_from(month).ok())
+        .and_then(|(y, m)| Date::new(y, m, 1).ok())
+        .unwrap_or(Date::MIN);
+    let back = i64::from(first.weekday().to_monday_zero_offset());
+    first.checked_sub(back.days()).unwrap_or(first)
 }
 
 /// Draw the month grid of `period`.
@@ -25,14 +30,14 @@ pub fn show(home: &mut HomeState, period: Option<Period>, ui: &mut egui::Ui) {
         return;
     };
     let start = grid_start(year, month);
-    let days: Vec<NaiveDate> = start.iter_days().take(COLUMNS * ROWS).collect();
+    let days: Vec<Date> = start.series(1.day()).take(COLUMNS * ROWS).collect();
     let per_day: Vec<Vec<CalendarItem>> = {
         let index = home.calendar.get(&home.entries, &home.filter_text);
         days.iter()
             .map(|&d| index.on(d).into_iter().cloned().collect())
             .collect()
     };
-    let today = Local::now().date_naive();
+    let today = sapphire_journal_api::time::local_date(jiff::Timestamp::now());
     let labels = datetime::labels(ui.ctx());
 
     ui.scope(|ui| {
@@ -68,7 +73,8 @@ pub fn show(home: &mut HomeState, period: Option<Period>, ui: &mut egui::Ui) {
                     ),
                 egui::vec2(cell_width, cell_height),
             );
-            let in_month = day.year() == year && day.month() == month;
+            let in_month =
+                i32::from(day.year()) == year && i64::from(day.month()) == i64::from(month);
             draw_cell(home, ui, cell, day, in_month, day == today, &per_day[i]);
         }
     });
@@ -78,7 +84,7 @@ fn draw_cell(
     home: &mut HomeState,
     ui: &mut egui::Ui,
     cell: egui::Rect,
-    day: NaiveDate,
+    day: Date,
     in_month: bool,
     is_today: bool,
     items: &[CalendarItem],
@@ -143,8 +149,8 @@ pub fn visible_count(total: usize, fits: usize) -> usize {
 mod tests {
     use super::*;
 
-    fn d(y: i32, m: u32, d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    fn d(y: i16, m: i8, d: i8) -> Date {
+        Date::new(y, m, d).unwrap()
     }
 
     #[test]
@@ -159,7 +165,7 @@ mod tests {
 
     #[test]
     fn grid_covers_month_end() {
-        assert!(grid_start(2026, 11) + chrono::Days::new(41) >= d(2026, 11, 30));
+        assert!(grid_start(2026, 11) + 41.days() >= d(2026, 11, 30));
     }
 
     #[test]

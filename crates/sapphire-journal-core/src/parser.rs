@@ -29,7 +29,7 @@ pub fn render_entry(entry: &Entry) -> String {
 
 /// Write an [`Entry`] back to its source file, updating `updated_at` first.
 pub fn write_entry(entry: &mut Entry) -> Result<()> {
-    entry.frontmatter.updated_at = chrono::Local::now().naive_local();
+    entry.frontmatter.updated_at = jiff::Timestamp::now();
     std::fs::write(&entry.path, render_entry(entry))?;
     Ok(())
 }

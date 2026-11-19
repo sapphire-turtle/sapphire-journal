@@ -1,6 +1,6 @@
 //! An entry, as the journal's files hold it and its methods carry it.
 
-use chrono::NaiveDateTime;
+use jiff::Timestamp;
 
 use crate::date_or_time::DateOrTime;
 use grain_id::GrainId;
@@ -27,12 +27,12 @@ pub struct Frontmatter<V = serde_json::Value> {
     pub slug: String,
 
     /// Timestamp when the entry was first created. Set automatically by `new`.
-    #[serde(default, with = "naive_datetime_serde")]
-    pub created_at: NaiveDateTime,
+    #[serde(default, with = "crate::time::rfc3339")]
+    pub created_at: Timestamp,
 
     /// Timestamp of the last write. Updated automatically by `write_entry`.
-    #[serde(default, with = "naive_datetime_serde")]
-    pub updated_at: NaiveDateTime,
+    #[serde(default, with = "crate::time::rfc3339")]
+    pub updated_at: Timestamp,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
@@ -76,18 +76,18 @@ pub struct TaskMeta<V = serde_json::Value> {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "naive_datetime_serde::opt"
+        with = "crate::time::rfc3339::option"
     )]
-    pub started_at: Option<NaiveDateTime>,
+    pub started_at: Option<Timestamp>,
 
     /// Timestamp when the task was closed (status → done/cancelled/archived).
     /// Set automatically by `entry modify`; can be overridden manually.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "naive_datetime_serde::opt"
+        with = "crate::time::rfc3339::option"
     )]
-    pub closed_at: Option<NaiveDateTime>,
+    pub closed_at: Option<Timestamp>,
 
     /// Unknown task fields preserved for round-trip compatibility.
     #[serde(flatten)]
@@ -151,15 +151,15 @@ pub struct TaskMetaView {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "naive_datetime_serde::opt"
+        with = "crate::time::rfc3339::option"
     )]
-    pub started_at: Option<NaiveDateTime>,
+    pub started_at: Option<Timestamp>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "naive_datetime_serde::opt"
+        with = "crate::time::rfc3339::option"
     )]
-    pub closed_at: Option<NaiveDateTime>,
+    pub closed_at: Option<Timestamp>,
 }
 
 impl<V> From<TaskMeta<V>> for TaskMetaView {
@@ -203,10 +203,10 @@ pub struct FrontmatterView {
     pub parent_id: Option<GrainId>,
     pub title: String,
     pub slug: String,
-    #[serde(with = "naive_datetime_serde")]
-    pub created_at: NaiveDateTime,
-    #[serde(with = "naive_datetime_serde")]
-    pub updated_at: NaiveDateTime,
+    #[serde(with = "crate::time::rfc3339")]
+    pub created_at: Timestamp,
+    #[serde(with = "crate::time::rfc3339")]
+    pub updated_at: Timestamp,
     pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<TaskMetaView>,
@@ -255,69 +255,5 @@ impl EntryHeader {
 
     pub fn title(&self) -> &str {
         &self.frontmatter.title
-    }
-}
-
-/// Custom serde module for `NaiveDateTime` using minute-precision format (`YYYY-MM-DDTHH:MM`).
-///
-/// Serializes to `%Y-%m-%dT%H:%M`. Deserializes from:
-/// - `%Y-%m-%dT%H:%M`        (minute precision — preferred)
-/// - `%Y-%m-%dT%H:%M:%S`     (second precision)
-/// - `%Y-%m-%dT%H:%M:%S%.f`  (sub-second precision — for backward compat)
-/// - `%Y-%m-%d`              (date only — `00:00`)
-mod naive_datetime_serde {
-    use chrono::{NaiveDate, NaiveDateTime};
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    const FORMAT: &str = "%Y-%m-%dT%H:%M";
-
-    /// Parse a datetime string, using `(h, m)` as the fallback time when only a date is given.
-    pub(super) fn parse_with_fallback(s: &str, h: u32, m: u32) -> Result<NaiveDateTime, String> {
-        for fmt in [FORMAT, "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%.f"] {
-            if let Ok(dt) = NaiveDateTime::parse_from_str(s, fmt) {
-                return Ok(dt);
-            }
-        }
-        if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-            return Ok(d.and_hms_opt(h, m, 0).unwrap());
-        }
-        Err(format!(
-            "cannot parse `{s}` as a datetime; expected format YYYY-MM-DDTHH:MM"
-        ))
-    }
-
-    pub fn serialize<S: Serializer>(dt: &NaiveDateTime, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&dt.format(FORMAT).to_string())
-    }
-
-    /// Deserializes with date-only → `00:00` (start-of-day).
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<NaiveDateTime, D::Error> {
-        let raw = String::deserialize(d)?;
-        parse_with_fallback(&raw, 0, 0).map_err(serde::de::Error::custom)
-    }
-
-    /// For `Option<NaiveDateTime>` fields — date-only → `00:00`.
-    pub mod opt {
-        use chrono::NaiveDateTime;
-        use serde::{Deserialize, Deserializer, Serializer};
-
-        pub fn serialize<S: Serializer>(
-            opt: &Option<NaiveDateTime>,
-            s: S,
-        ) -> Result<S::Ok, S::Error> {
-            match opt {
-                Some(dt) => super::serialize(dt, s),
-                None => s.serialize_none(),
-            }
-        }
-
-        pub fn deserialize<'de, D: Deserializer<'de>>(
-            d: D,
-        ) -> Result<Option<NaiveDateTime>, D::Error> {
-            let raw = String::deserialize(d)?;
-            super::parse_with_fallback(&raw, 0, 0)
-                .map(Some)
-                .map_err(serde::de::Error::custom)
-        }
     }
 }

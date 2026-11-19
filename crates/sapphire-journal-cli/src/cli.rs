@@ -24,6 +24,9 @@ pub struct Cli {
     pub command: Command,
 }
 
+// Parsed once per run: the size of the largest variant (jiff timestamps in
+// `entry modify`'s fields) costs nothing worth boxing for.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 pub enum Command {
     /// Manage entries

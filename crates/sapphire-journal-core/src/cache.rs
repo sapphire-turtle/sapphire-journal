@@ -49,7 +49,7 @@ use crate::{
 // ── schema version ────────────────────────────────────────────────────────────
 
 /// Stored in `PRAGMA user_version`.  Increment whenever the schema changes.
-pub const SCHEMA_VERSION: i32 = 7;
+pub const SCHEMA_VERSION: i32 = 8;
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
@@ -351,7 +351,7 @@ pub fn find_entry_by_title(conn: &Connection, title: &str) -> Result<crate::entr
 /// Read all entries from the cache as [`EntryHeader`] structs (no body).
 pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::EntryHeader>> {
     use crate::entry::{EntryHeader, EventMetaView, FrontmatterView, TaskMetaView};
-    use chrono::NaiveDateTime;
+    use jiff::Timestamp;
 
     let mut tag_map: HashMap<GrainId, Vec<String>> = HashMap::new();
     {
@@ -366,10 +366,10 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
         }
     }
 
-    let parse_dt = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default();
-    let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
+    let parse_dt = |s: &str| sapphire_journal_api::time::parse(s).unwrap_or_default();
+    let parse_dt_opt = |s: Option<String>| -> Option<Timestamp> {
         s.as_deref()
-            .and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+            .and_then(|s| sapphire_journal_api::time::parse(s).ok())
     };
 
     let mut stmt = conn.prepare(
@@ -456,7 +456,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
             frontmatter.hidden == Some(true),
             frontmatter.created_at,
             frontmatter.updated_at,
-            chrono::Duration::days(crate::labels::STALE_AFTER_DAYS_DEFAULT as i64),
+            jiff::SignedDuration::from_hours(24 * (crate::labels::STALE_AFTER_DAYS_DEFAULT as i64)),
         );
         result.push(EntryHeader {
             path,
@@ -494,8 +494,8 @@ pub fn upsert_entry_from_path(conn: &Connection, path: &Path) -> Result<()> {
 
 fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entry> {
     use crate::entry::{Entry, EventMeta, Frontmatter, TaskMeta};
-    use chrono::NaiveDateTime;
     use indexmap::IndexMap;
+    use jiff::Timestamp;
 
     let (
         parent_id,
@@ -541,10 +541,10 @@ fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entr
         .query_map([id], |row| row.get(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let parse_dt = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default();
-    let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
+    let parse_dt = |s: &str| sapphire_journal_api::time::parse(s).unwrap_or_default();
+    let parse_dt_opt = |s: Option<String>| -> Option<Timestamp> {
         s.as_deref()
-            .and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+            .and_then(|s| sapphire_journal_api::time::parse(s).ok())
     };
 
     let task = task_status.map(|status| TaskMeta {
@@ -668,18 +668,18 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
             path_str.as_ref(),
             fm.title,
             fm.slug,
-            fm.created_at.format("%Y-%m-%dT%H:%M").to_string(),
-            fm.updated_at.format("%Y-%m-%dT%H:%M").to_string(),
+            sapphire_journal_api::time::format(fm.created_at),
+            sapphire_journal_api::time::format(fm.updated_at),
             fm.task.as_ref().map(|t| t.status.clone()),
             fm.task.as_ref().and_then(|t| t.due).map(|d| d.to_string()),
             fm.task
                 .as_ref()
                 .and_then(|t| t.started_at)
-                .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
+                .map(sapphire_journal_api::time::format),
             fm.task
                 .as_ref()
                 .and_then(|t| t.closed_at)
-                .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
+                .map(sapphire_journal_api::time::format),
             fm.event.as_ref().map(|e| e.start.to_string()),
             fm.event.as_ref().map(|e| e.end.to_string()),
             fm.hidden.map(i64::from),
@@ -754,7 +754,7 @@ mod tests {
     }
 
     fn frontmatter(id: GrainId, title: &str) -> Frontmatter {
-        let now = chrono::Local::now().naive_local();
+        let now = jiff::Timestamp::now();
         Frontmatter {
             id,
             parent_id: None,
@@ -777,11 +777,9 @@ mod tests {
         let conn = conn_with_schema();
         let id = GrainId::now_unix();
         let mut fm = frontmatter(id, "rt");
-        let d = DateOrTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap());
-        let dt = DateOrTime::DateTime(
-            chrono::NaiveDate::from_ymd_opt(2026, 11, 9)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
+        let d = DateOrTime::Date(jiff::civil::date(2026, 11, 8));
+        let dt = DateOrTime::Time(
+            sapphire_journal_api::time::from_local(jiff::civil::date(2026, 11, 9).at(0, 0, 0, 0))
                 .unwrap(),
         );
         fm.task = Some(crate::entry::TaskMeta {

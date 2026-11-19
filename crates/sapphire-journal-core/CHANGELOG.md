@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Times are `jiff` types (see sapphire-journal-api). A period (`today`, `2026-W15`, `2026-03-01/2026-03-07`, …) covers its days in this host's time zone; its ends may carry an offset.
+- The cache is rebuilt (schema 8) to hold times with their offset.
+- sapphire-framework 0.29, corundum-framework 0.13.
+
 ## [0.16.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-core-v0.15.2...sapphire-journal-core-v0.16.0) - 2026-11-09
 
 ### Added

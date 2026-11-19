@@ -5,8 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{NaiveDate, Weekday};
 use corundum_framework_gui::datetime::Period;
+use jiff::civil::{Date, Weekday};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
@@ -71,8 +71,8 @@ pub enum StartupPeriod {
 impl Settings {
     /// The period the window opens on (`None` = all entries). A missing or unparsable
     /// `last_period` falls back to this week. Weeks start on Monday.
-    pub fn initial_period(&self, today: NaiveDate) -> Option<Period> {
-        let this_week = || Some(Period::week_of(today, Weekday::Mon));
+    pub fn initial_period(&self, today: Date) -> Option<Period> {
+        let this_week = || Some(Period::week_of(today, Weekday::Monday));
         match self.startup_period {
             StartupPeriod::Today => Some(Period::Day(today)),
             StartupPeriod::ThisWeek => this_week(),
@@ -126,10 +126,10 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use jiff::civil::Date;
 
-    fn sun() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 11, 8).unwrap()
+    fn sun() -> Date {
+        jiff::civil::date(2026, 11, 8)
     }
 
     fn with(startup: StartupPeriod, last: Option<&str>) -> Settings {
@@ -142,7 +142,7 @@ mod tests {
 
     fn this_week() -> Option<Period> {
         Some(Period::Week {
-            start: NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(),
+            start: jiff::civil::date(2026, 11, 2),
         })
     }
 

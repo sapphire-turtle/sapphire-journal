@@ -1,18 +1,20 @@
 //! A date input that is a date picker for an all-day value and a date-and-time
 //! picker for a timed one, and the "All day" switches that move between them.
 
-use chrono::{NaiveDate, NaiveTime};
 use corundum_framework_gui::datetime::{self, DatePickerButton, DateTimePickerButton};
+use jiff::civil::{Date, Time};
 use sapphire_framework::gui::egui;
-use sapphire_journal_api::DateOrTime;
+use sapphire_journal_api::{DateOrTime, time};
 
 /// The time of day a due date or event start gets when "All day" is turned off.
-const DEFAULT_START: (u32, u32) = (9, 0);
+const DEFAULT_START: (i8, i8) = (9, 0);
 /// The time of day an event end gets when "All day" is turned off.
-const DEFAULT_END: (u32, u32) = (10, 0);
+const DEFAULT_END: (i8, i8) = (10, 0);
 
-fn at(date: NaiveDate, (h, m): (u32, u32)) -> DateOrTime {
-    DateOrTime::DateTime(date.and_time(NaiveTime::from_hms_opt(h, m, 0).expect("valid time")))
+/// `date` at `h:m` in this host's time zone.
+fn at(date: Date, (h, m): (i8, i8)) -> DateOrTime {
+    let datetime = date.to_datetime(Time::new(h, m, 0, 0).expect("valid time"));
+    DateOrTime::Time(time::from_local(datetime).expect("a recent day's time is a time here"))
 }
 
 /// A picker for `value`: a [`DatePickerButton`] for a date, a
@@ -33,8 +35,18 @@ pub fn date_or_time_input(
             }
             response
         }
-        DateOrTime::DateTime(dt) => {
-            ui.add(DateTimePickerButton::new(id_salt, dt).config(datetime::config(ui.ctx())))
+        DateOrTime::Time(t) => {
+            // The picker shows and edits wall-clock time here.
+            let mut local = time::local(*t).datetime();
+            let response = ui.add(
+                DateTimePickerButton::new(id_salt, &mut local).config(datetime::config(ui.ctx())),
+            );
+            if local != time::local(*t).datetime()
+                && let Ok(picked) = time::from_local(local)
+            {
+                *t = picked;
+            }
+            response
         }
     }
 }
@@ -67,12 +79,12 @@ pub fn set_due_all_day(due: &mut DateOrTime, all_day: bool) {
 mod tests {
     use super::*;
 
-    fn d(day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 11, day).unwrap()
+    fn d(day: i8) -> Date {
+        jiff::civil::date(2026, 11, day)
     }
 
-    fn t(day: u32, h: u32, m: u32) -> DateOrTime {
-        DateOrTime::DateTime(d(day).and_hms_opt(h, m, 0).unwrap())
+    fn t(day: i8, h: i8, m: i8) -> DateOrTime {
+        at(d(day), (h, m))
     }
 
     #[test]

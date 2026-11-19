@@ -3,8 +3,9 @@
 
 use std::time::Duration;
 
-use chrono::{Local, NaiveDate, NaiveDateTime, Timelike};
 use corundum_framework_gui::datetime::Period;
+use jiff::ToSpan;
+use jiff::civil::{Date, DateTime};
 use sapphire_framework::gui::egui;
 
 use super::chip::{chip, chip_label, open_day};
@@ -28,15 +29,16 @@ pub fn y_of(minutes: u32) -> f32 {
 /// The minutes (`0..=1440`) of `day` a timed item covers, clipped to that day.
 /// `None` when the item is all-day or not on `day`; an event ending at 00:00
 /// is not on the day it ends, so it leaves no sliver there.
-pub fn segment_on(item: &CalendarItem, day: NaiveDate) -> Option<(u32, u32)> {
+pub fn segment_on(item: &CalendarItem, day: Date) -> Option<(u32, u32)> {
     if item.all_day || day < item.first_day() || day > item.last_day() {
         return None;
     }
     let (start, end) = item.span();
-    let midnight = day.and_time(chrono::NaiveTime::MIN);
-    let minutes = |t: NaiveDateTime| {
-        let m = (t - midnight)
-            .num_minutes()
+    let midnight = day.to_datetime(jiff::civil::Time::midnight());
+    let minutes = |t: DateTime| {
+        let m = midnight
+            .duration_until(t)
+            .as_mins()
             .clamp(0, i64::from(DAY_MINUTES));
         m as u32
     };
@@ -93,10 +95,10 @@ fn close_group(placed: &mut [(usize, usize)], group: &[usize], columns: usize) {
 }
 
 /// The days the timeline shows: one for a day, seven for a week.
-fn days_of(period: Option<Period>) -> Vec<NaiveDate> {
+fn days_of(period: Option<Period>) -> Vec<Date> {
     match period {
         Some(Period::Day(day)) => vec![day],
-        Some(Period::Week { start }) => start.iter_days().take(7).collect(),
+        Some(Period::Week { start }) => start.series(1.day()).take(7).collect(),
         _ => Vec::new(),
     }
 }
@@ -120,13 +122,13 @@ fn draw(home: &mut HomeState, period: Option<Period>, ui: &mut egui::Ui) {
             .map(|&d| index.on(d).into_iter().cloned().collect())
             .collect()
     };
-    let now = Local::now().naive_local();
+    let now = sapphire_journal_api::time::local(jiff::Timestamp::now()).datetime();
     let today = now.date();
     let column_width = ((ui.available_width() - GUTTER) / days.len() as f32).max(1.0);
 
     columns_row(ui, column_width, days.len(), |ui, i| {
         let day = days[i];
-        let mut text = egui::RichText::new(day.format("%a %m-%d").to_string());
+        let mut text = egui::RichText::new(day.strftime("%a %m-%d").to_string());
         if day == today {
             text = text.strong().color(ui.visuals().strong_text_color());
         }
@@ -161,7 +163,7 @@ fn draw(home: &mut HomeState, period: Option<Period>, ui: &mut egui::Ui) {
             let left = rect.left() + GUTTER + i as f32 * column_width;
             draw_blocks(home, ui, items, days[i], left, rect.top(), column_width);
             if days[i] == today {
-                let y = rect.top() + y_of(now.hour() * 60 + now.minute());
+                let y = rect.top() + y_of(now.hour() as u32 * 60 + now.minute() as u32);
                 let stroke = egui::Stroke::new(2.0, ui.visuals().error_fg_color);
                 ui.painter().hline(left..=left + column_width, y, stroke);
                 ui.ctx().request_repaint_after(Duration::from_secs(60));
@@ -221,7 +223,7 @@ fn draw_blocks(
     home: &mut HomeState,
     ui: &mut egui::Ui,
     items: &[CalendarItem],
-    day: NaiveDate,
+    day: Date,
     left: f32,
     top: f32,
     width: f32,
@@ -266,18 +268,17 @@ fn draw_blocks(
 mod tests {
     use std::path::PathBuf;
 
-    use chrono::NaiveDateTime;
     use sapphire_journal_api::DateOrTime;
 
     use super::*;
     use crate::screens::calendar::items::ItemKind;
 
-    fn day(d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
+    fn day(d: i8) -> Date {
+        jiff::civil::date(2026, 11, d)
     }
 
-    fn at(d: u32, h: u32, m: u32) -> NaiveDateTime {
-        day(d).and_hms_opt(h, m, 0).unwrap()
+    fn at(d: i8, h: i8, m: i8) -> jiff::Timestamp {
+        sapphire_journal_api::time::from_local(day(d).at(h, m, 0, 0)).unwrap()
     }
 
     fn item(kind: ItemKind, all_day: bool) -> CalendarItem {
@@ -290,11 +291,11 @@ mod tests {
         }
     }
 
-    fn timed_event(start: NaiveDateTime, end: NaiveDateTime) -> CalendarItem {
+    fn timed_event(start: jiff::Timestamp, end: jiff::Timestamp) -> CalendarItem {
         item(
             ItemKind::Event {
-                start: DateOrTime::DateTime(start),
-                end: DateOrTime::DateTime(end),
+                start: DateOrTime::Time(start),
+                end: DateOrTime::Time(end),
             },
             false,
         )
@@ -323,13 +324,13 @@ mod tests {
 
     #[test]
     fn due_segment_is_a_point() {
-        let due = item(ItemKind::Due(DateOrTime::DateTime(at(8, 15, 0))), false);
+        let due = item(ItemKind::Due(DateOrTime::Time(at(8, 15, 0))), false);
         assert_eq!(segment_on(&due, day(8)), Some((900, 900)));
     }
 
     #[test]
     fn midnight_due_sits_at_the_top() {
-        let due = item(ItemKind::Due(DateOrTime::DateTime(at(8, 0, 0))), false);
+        let due = item(ItemKind::Due(DateOrTime::Time(at(8, 0, 0))), false);
         assert_eq!(segment_on(&due, day(8)), Some((0, 0)));
         assert_eq!(segment_on(&due, day(7)), None);
     }
