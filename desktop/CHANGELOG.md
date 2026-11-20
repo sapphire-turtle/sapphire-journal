@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.17.0...v0.18.0) - 2026-11-20
+
+### Fixed
+
+- *(deps)* rusqlite 0.43 for RUSTSEC-2026-0459, grain-id 0.17
+
+### Other
+
+- *(deps)* sapphire-framework 0.29.1, which shows when edits reached a peer
+- [**breaking**] times are jiff Timestamps, all-day dates civil dates (RUSTSEC-2026-0543)
+
 ### Added
 
 - The status bar says whether your edits have reached another device — "Syncing…", "Not sent — no peer connected", or "Synced to *device* · HH:MM" — so you can tell when it is safe to close the computer. In a narrow window, a ring around the status dot shows that an edit has not been sent yet (sapphire-framework 0.29.1).
