@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.18.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-cli-v0.17.0...sapphire-journal-cli-v0.18.0) - 2026-11-20
 
-### Other
-
-- [**breaking**] times are jiff Timestamps, all-day dates civil dates (RUSTSEC-2026-0543)
-
 ### Changed
 
 - `--task-due`, `--event-start`, `--event-end`, `--task-started-at` and `--task-closed-at` take a time with an offset (`2026-11-08T09:00+09:00`) or without one, in this host's time zone; `entry show` prints times with their offset.

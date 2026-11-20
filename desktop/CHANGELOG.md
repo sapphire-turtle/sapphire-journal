@@ -9,14 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.18.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.17.0...v0.18.0) - 2026-11-20
 
-### Fixed
+### Breaking
 
-- *(deps)* rusqlite 0.43 for RUSTSEC-2026-0459, grain-id 0.17
-
-### Other
-
-- *(deps)* sapphire-framework 0.29.1, which shows when edits reached a peer
-- [**breaking**] times are jiff Timestamps, all-day dates civil dates (RUSTSEC-2026-0543)
+- **Journal releases before this one cannot read an entry this one has written: update every device at once.** Times are written to the minute with this host's offset; an entry written before gains the offset when it is next saved.
 
 ### Added
 
