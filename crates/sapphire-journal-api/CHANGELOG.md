@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-api-v5.0.0...sapphire-journal-api-v6.0.0) - 2026-11-20
+
 ### Breaking
 
 - Times are `jiff::Timestamp` and dates `jiff::civil::Date`, not chrono's naive types: chrono is unmaintained (RUSTSEC-2026-0543). `created_at`, `updated_at`, `started_at` and `closed_at` are `Timestamp`s; `DateOrTime` is `Date(Date)` (all day) or `Time(Timestamp)`, which was `DateTime(NaiveDateTime)`. `start_bound` and `end_bound` are `Timestamp`s, an all-day date's in this host's time zone. `time` has the helpers (`now`, `local`, `local_date`, `from_local`, `parse`, `format`).

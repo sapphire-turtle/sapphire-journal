@@ -4,6 +4,17 @@ All notable changes to `sapphire-journal` and `sapphire-journal-core` are docume
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.17.0...v0.18.0) - 2026-11-20
+
+### Breaking
+
+- **Journal releases before this one cannot read an entry this one has written: update every device at once.** Times are written to the minute with this host's offset; an entry written before gains the offset when it is next saved.
+- sapphire-framework 0.29.1 and corundum-framework 0.13: the IPC handshake's API version is 7, so this release's CLI and MCP server talk only to an app server of this release. Times are jiff's, not chrono's, which is unmaintained (RUSTSEC-2026-0543).
+
+### Security
+
+- rusqlite 0.43, whose bundled SQLite (3.54) fixes RUSTSEC-2026-0459.
+
 ## [0.17.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.16.0...v0.17.0) - 2026-11-09
 
 ### Added

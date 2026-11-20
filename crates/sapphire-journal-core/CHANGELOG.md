@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-core-v0.16.0...sapphire-journal-core-v0.17.0) - 2026-11-20
+
 ### Changed
 
 - Times are `jiff` types (see sapphire-journal-api). A period (`today`, `2026-W15`, `2026-03-01/2026-03-07`, …) covers its days in this host's time zone; its ends may carry an offset.
