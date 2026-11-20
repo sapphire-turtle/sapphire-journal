@@ -29,6 +29,7 @@ pub mod labels;
 pub mod ops;
 pub mod parser;
 pub mod period;
+mod sql_id;
 pub mod state;
 #[cfg(feature = "text-input")]
 pub mod text_input;

@@ -807,7 +807,7 @@ pub fn update_entry(
         if t != entry.frontmatter.title && !t.is_empty() {
             let count: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM entries WHERE title = ?1 AND id != ?2",
-                rusqlite::params![t, entry.frontmatter.id],
+                rusqlite::params![t, crate::sql_id::SqlId(entry.frontmatter.id)],
                 |row| row.get(0),
             )?;
             if count > 0 {

@@ -16,7 +16,7 @@ categories = ["network-programming"]
 # Re-exported, so its major moves this crate's (and so `API_VERSION`) with it.
 sapphire-server-api = { package = "sapphire-framework-server-api", version = "7.0" }
 jiff.workspace = true
-grain-id = { version = "0.15", features = ["serde", "schemars"] }
+grain-id = { version = "0.17", features = ["serde", "schemars"] }
 indexmap.workspace = true
 schemars.workspace = true
 serde.workspace = true

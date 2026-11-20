@@ -37,6 +37,8 @@ use std::{
 };
 
 use grain_id::GrainId;
+
+use crate::sql_id::{self, SqlId};
 use rusqlite::{Connection, OptionalExtension as _, params};
 use sapphire_track::{FileStamp, file_stamp};
 
@@ -312,7 +314,7 @@ pub fn find_entry_by_id(conn: &Connection, id: GrainId) -> Result<crate::entry::
     match fetch_full_entry(conn, id) {
         Ok(entry) => {
             if !entry.path.exists() {
-                conn.execute("DELETE FROM entries WHERE id = ?1", [id])?;
+                conn.execute("DELETE FROM entries WHERE id = ?1", [SqlId(id)])?;
                 return Err(Error::EntryNotFound(id.to_string()));
             }
             Ok(entry)
@@ -329,7 +331,7 @@ pub fn find_entry_by_title(conn: &Connection, title: &str) -> Result<crate::entr
     let mut stmt = conn.prepare("SELECT id, path FROM entries WHERE title = ?1")?;
     let rows: Vec<(GrainId, String)> = stmt
         .query_map([title], |row| {
-            Ok((row.get::<_, GrainId>(0)?, row.get::<_, String>(1)?))
+            Ok((row.get::<_, SqlId>(0)?.0, row.get::<_, String>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -358,7 +360,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
         let mut stmt = conn.prepare("SELECT entry_id, tag FROM tags ORDER BY entry_id, tag")?;
         let rows = stmt
             .query_map([], |row| {
-                Ok((row.get::<_, GrainId>(0)?, row.get::<_, String>(1)?))
+                Ok((row.get::<_, SqlId>(0)?.0, row.get::<_, String>(1)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         for (id, tag) in rows {
@@ -382,8 +384,8 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
     let rows = stmt
         .query_map([], |row| {
             Ok((
-                row.get::<_, GrainId>(0)?,
-                row.get::<_, Option<GrainId>>(1)?,
+                row.get::<_, SqlId>(0)?.0,
+                row.get::<_, Option<SqlId>>(1)?.map(|id| id.0),
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
@@ -516,10 +518,10 @@ fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entr
                 task_status, task_due, task_started_at, task_closed_at,
                 event_start, event_end, hidden
          FROM entries WHERE id = ?1",
-        [id],
+        [SqlId(id)],
         |row| {
             Ok((
-                row.get::<_, Option<GrainId>>(0)?,
+                row.get::<_, Option<SqlId>>(0)?.map(|id| id.0),
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
@@ -538,7 +540,7 @@ fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entr
 
     let mut tags_stmt = conn.prepare("SELECT tag FROM tags WHERE entry_id = ?1 ORDER BY tag")?;
     let tags: Vec<String> = tags_stmt
-        .query_map([id], |row| row.get(0))?
+        .query_map([SqlId(id)], |row| row.get(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let parse_dt = |s: &str| sapphire_journal_api::time::parse(s).unwrap_or_default();
@@ -606,7 +608,7 @@ fn increment_until_free(
         let conflict: Option<String> = conn
             .query_row(
                 "SELECT path FROM entries WHERE id = ?1 AND path != ?2",
-                params![entry.frontmatter.id, path_str.as_ref()],
+                params![SqlId(entry.frontmatter.id), path_str.as_ref()],
                 |row| row.get(0),
             )
             .optional()?;
@@ -663,8 +665,8 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
             event_start, event_end, hidden
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
-            fm.id,
-            fm.parent_id,
+            SqlId(fm.id),
+            sql_id::opt(fm.parent_id),
             path_str.as_ref(),
             fm.title,
             fm.slug,
@@ -686,11 +688,11 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
         ],
     )?;
 
-    conn.execute("DELETE FROM tags WHERE entry_id = ?1", [fm.id])?;
+    conn.execute("DELETE FROM tags WHERE entry_id = ?1", [SqlId(fm.id)])?;
     for tag in &fm.tags {
         conn.execute(
             "INSERT OR IGNORE INTO tags (entry_id, tag) VALUES (?1, ?2)",
-            params![fm.id, tag],
+            params![SqlId(fm.id), tag],
         )?;
     }
 
