@@ -14,8 +14,8 @@ use sapphire_journal_core::{
     text_input::filter as core_filter,
 };
 
-use chrono::NaiveDateTime;
 use clap::{Args, Subcommand};
+use jiff::Timestamp;
 use std::{path::Path, process::Command, str::FromStr as _};
 
 use crate::client::Server;
@@ -305,11 +305,11 @@ pub struct EntryFields {
 
     /// Task start date/time; set automatically when status → in_progress
     #[arg(long, value_name = "DATETIME", value_parser = parse_datetime)]
-    pub task_started_at: Option<NaiveDateTime>,
+    pub task_started_at: Option<Timestamp>,
 
     /// Task close date/time; set automatically when status → done/cancelled/archived
     #[arg(long, value_name = "DATETIME", value_parser = parse_datetime)]
-    pub task_closed_at: Option<NaiveDateTime>,
+    pub task_closed_at: Option<Timestamp>,
 
     /// Event start date, or date and time (YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM)
     #[arg(long, value_name = "DATE[THH:MM]", value_parser = DateOrTime::from_str)]
@@ -325,8 +325,8 @@ pub struct EntryFields {
 }
 
 /// The server's spelling of a timestamp the CLI parsed.
-fn datetime(dt: Option<NaiveDateTime>) -> Option<String> {
-    dt.map(|d| d.format("%Y-%m-%dT%H:%M").to_string())
+fn datetime(dt: Option<Timestamp>) -> Option<String> {
+    dt.map(sapphire_journal_api::time::format)
 }
 
 impl EntryFields {
@@ -609,14 +609,20 @@ fn show(entry: &Entry) {
         fm.hidden == Some(true),
         fm.created_at,
         fm.updated_at,
-        chrono::Duration::days(STALE_AFTER_DAYS_DEFAULT as i64),
+        jiff::SignedDuration::from_hours(24 * (STALE_AFTER_DAYS_DEFAULT as i64)),
     );
     let flags_str: Vec<&str> = flags.iter().map(|f| f.as_str()).collect();
 
     println!("# {}", entry.title());
     println!("flags:    {}", flags_str.join(", "));
-    println!("created:  {}", fm.created_at.format("%Y-%m-%dT%H:%M"));
-    println!("updated:  {}", fm.updated_at.format("%Y-%m-%dT%H:%M"));
+    println!(
+        "created:  {}",
+        sapphire_journal_api::time::format(fm.created_at)
+    );
+    println!(
+        "updated:  {}",
+        sapphire_journal_api::time::format(fm.updated_at)
+    );
     if !fm.tags.is_empty() {
         println!("tags:     {}", fm.tags.join(", "));
     }
@@ -627,10 +633,10 @@ fn show(entry: &Entry) {
             None => println!("task:     {status}"),
         }
         if let Some(sa) = task.started_at {
-            println!("started:  {}", sa.format("%Y-%m-%dT%H:%M"));
+            println!("started:  {}", sapphire_journal_api::time::format(sa));
         }
         if let Some(ca) = task.closed_at {
-            println!("closed:   {}", ca.format("%Y-%m-%dT%H:%M"));
+            println!("closed:   {}", sapphire_journal_api::time::format(ca));
         }
     }
     if let Some(event) = &fm.event {

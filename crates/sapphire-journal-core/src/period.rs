@@ -1,10 +1,12 @@
-use chrono::{Datelike as _, Duration, NaiveDate, NaiveDateTime};
+use jiff::civil::{Date, DateTime, ISOWeekDate, Weekday};
+use jiff::{Timestamp, ToSpan};
+use sapphire_journal_api::time;
 
 /// A time period used for filtering entries.
 #[derive(Debug, Clone)]
 pub enum Period {
-    /// Inclusive datetime range [start, end].
-    Range(NaiveDateTime, NaiveDateTime),
+    /// Inclusive range [start, end].
+    Range(Timestamp, Timestamp),
     /// Match entries where the field is absent (null / not set).
     None,
 }
@@ -13,11 +15,11 @@ impl Period {
     /// Returns true if this period matches the given optional field value.
     ///
     /// - `Period::None` matches when `field` is `None`.
-    /// - `Period::Range` matches when `field` is `Some(dt)` and `start <= dt <= end`.
-    pub fn matches(&self, field: Option<NaiveDateTime>) -> bool {
+    /// - `Period::Range` matches when `field` is `Some(t)` and `start <= t <= end`.
+    pub fn matches(&self, field: Option<Timestamp>) -> bool {
         match self {
             Period::None => field.is_none(),
-            Period::Range(start, end) => field.is_some_and(|dt| dt >= *start && dt <= *end),
+            Period::Range(start, end) => field.is_some_and(|t| t >= *start && t <= *end),
         }
     }
 
@@ -25,8 +27,8 @@ impl Period {
     /// overlaps with this period. Either bound may be absent (treated as unbounded).
     pub fn overlaps_event(
         &self,
-        event_start: Option<NaiveDateTime>,
-        event_end: Option<NaiveDateTime>,
+        event_start: Option<Timestamp>,
+        event_end: Option<Timestamp>,
     ) -> bool {
         match self {
             Period::None => event_start.is_none() && event_end.is_none(),
@@ -42,85 +44,65 @@ impl Period {
     }
 }
 
-/// Parse a datetime from `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM`, or `YYYY-MM-DDTHH:MM:SS`.
-/// Date-only input is treated as start-of-day (00:00:00).
-pub fn parse_datetime(s: &str) -> Result<NaiveDateTime, String> {
-    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-        return Ok(dt);
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M") {
-        return Ok(dt);
-    }
-    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return Ok(d.and_hms_opt(0, 0, 0).unwrap());
-    }
-    Err(format!(
-        "`{s}` is not a valid date/datetime — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"
-    ))
+const INVALID: &str = "is not a valid date/datetime — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM";
+
+/// Parse a moment from `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM[:SS]`, either with an
+/// offset or in this host's time zone. Date-only input is that day's start
+/// (00:00:00) here.
+pub fn parse_datetime(s: &str) -> Result<Timestamp, String> {
+    time::parse(s).map_err(|_| format!("`{s}` {INVALID}"))
 }
 
-/// Like [`parse_datetime`] but date-only input is treated as end-of-day (23:59:59).
-pub fn parse_datetime_end(s: &str) -> Result<NaiveDateTime, String> {
-    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-        return Ok(dt);
+/// Like [`parse_datetime`] but date-only input is the day's end (23:59:59) here.
+pub fn parse_datetime_end(s: &str) -> Result<Timestamp, String> {
+    if let Some(d) = time::parse_date(s) {
+        return local(d.at(23, 59, 59, 0), s);
     }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M") {
-        return Ok(dt);
-    }
-    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return Ok(d.and_hms_opt(23, 59, 59).unwrap());
-    }
-    Err(format!(
-        "`{s}` is not a valid date/datetime — expected YYYY-MM-DD or YYYY-MM-DDTHH:MM"
-    ))
+    parse_datetime(s)
+}
+
+fn local(datetime: DateTime, s: &str) -> Result<Timestamp, String> {
+    time::from_local(datetime).map_err(|_| format!("`{s}` {INVALID}"))
 }
 
 /// Return the ISO week range (Monday..Sunday) for the given date.
-fn iso_week_range(d: NaiveDate) -> (NaiveDate, NaiveDate) {
-    let days_back = d.weekday().num_days_from_monday();
-    let monday = d - Duration::days(days_back as i64);
-    (monday, monday + Duration::days(6))
+fn iso_week_range(d: Date) -> (Date, Date) {
+    let monday = d - i64::from(d.weekday().to_monday_zero_offset()).days();
+    (monday, monday + 6.days())
 }
 
 /// Return the first and last day of the month containing `d`.
-fn month_range(year: i32, month: u32) -> (NaiveDate, NaiveDate) {
-    let first = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
-    let (ny, nm) = if month == 12 {
-        (year + 1, 1u32)
-    } else {
-        (year, month + 1)
-    };
-    let last = NaiveDate::from_ymd_opt(ny, nm, 1).unwrap() - Duration::days(1);
-    (first, last)
+fn month_range(year: i16, month: i8) -> (Date, Date) {
+    let first = Date::new(year, month, 1).unwrap();
+    (first, first.last_of_month())
 }
 
 /// Wrap a date range into a [`Period::Range`].
-fn day_range(start: NaiveDate, end: NaiveDate) -> Period {
-    Period::Range(
-        start.and_hms_opt(0, 0, 0).unwrap(),
-        end.and_hms_opt(23, 59, 59).unwrap(),
-    )
+fn day_range(start: Date, end: Date) -> Period {
+    let at = |d: DateTime| time::from_local(d).unwrap_or_else(|_| Timestamp::now());
+    Period::Range(at(start.at(0, 0, 0, 0)), at(end.at(23, 59, 59, 0)))
 }
 
 /// Parse an ISO week string like `2026-W15` into (Monday, Sunday).
-fn parse_iso_week(s: &str) -> Result<(NaiveDate, NaiveDate), String> {
+fn parse_iso_week(s: &str) -> Result<(Date, Date), String> {
     // Expected format: YYYY-Www
     let (year_s, w_s) = s
         .split_once("-W")
         .or_else(|| s.split_once("-w"))
         .ok_or_else(|| format!("`{s}` is not a valid ISO week — expected YYYY-Www"))?;
-    let year: i32 = year_s
+    let year: i16 = year_s
         .parse()
         .map_err(|_| format!("`{year_s}` is not a valid year"))?;
-    let week: u32 = w_s
+    let week: i8 = w_s
         .parse()
         .map_err(|_| format!("`{w_s}` is not a valid week number"))?;
     if week == 0 || week > 53 {
         return Err(format!("week number {week} is out of range (1–53)"));
     }
-    let monday = NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Mon)
-        .ok_or_else(|| format!("`{s}` does not correspond to a valid ISO week"))?;
-    Ok((monday, monday + Duration::days(6)))
+    let monday = ISOWeekDate::new(year, week, Weekday::Monday)
+        .map_err(|_| format!("`{s}` does not correspond to a valid ISO week"))?
+        .date();
+    Ok((monday, monday + 6.days()))
 }
 
 /// Parse a period string into a [`Period`].
@@ -141,19 +123,19 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
         return Ok(Period::None);
     }
 
-    let today = chrono::Local::now().date_naive();
+    let today = time::local_date(Timestamp::now());
 
     if s == "today" {
         return Ok(day_range(today, today));
     }
 
     if s == "yesterday" {
-        let d = today - Duration::days(1);
+        let d = today - 1.day();
         return Ok(day_range(d, d));
     }
 
     if s == "tomorrow" {
-        let d = today + Duration::days(1);
+        let d = today + 1.day();
         return Ok(day_range(d, d));
     }
 
@@ -163,12 +145,12 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
     }
 
     if s == "last_week" {
-        let (mon, sun) = iso_week_range(today - Duration::days(7));
+        let (mon, sun) = iso_week_range(today - 7.days());
         return Ok(day_range(mon, sun));
     }
 
     if s == "next_week" {
-        let (mon, sun) = iso_week_range(today + Duration::days(7));
+        let (mon, sun) = iso_week_range(today + 7.days());
         return Ok(day_range(mon, sun));
     }
 
@@ -179,7 +161,7 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
 
     if s == "last_month" {
         let (year, month) = if today.month() == 1 {
-            (today.year() - 1, 12u32)
+            (today.year() - 1, 12i8)
         } else {
             (today.year(), today.month() - 1)
         };
@@ -189,7 +171,7 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
 
     if s == "next_month" {
         let (year, month) = if today.month() == 12 {
-            (today.year() + 1, 1u32)
+            (today.year() + 1, 1i8)
         } else {
             (today.year(), today.month() + 1)
         };
@@ -214,13 +196,13 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
     }
 
     // Single date: YYYY-MM-DD
-    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+    if let Some(d) = time::parse_date(s) {
         return Ok(day_range(d, d));
     }
 
     // Year-month: YYYY-MM
     if let Some((year_s, month_s)) = s.split_once('-')
-        && let (Ok(year), Ok(month)) = (year_s.parse::<i32>(), month_s.parse::<u32>())
+        && let (Ok(year), Ok(month)) = (year_s.parse::<i16>(), month_s.parse::<i8>())
         && (1..=12).contains(&month)
     {
         let (first, last) = month_range(year, month);
@@ -228,11 +210,11 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
     }
 
     // Year only: YYYY
-    if let Ok(year) = s.parse::<i32>()
+    if let Ok(year) = s.parse::<i16>()
         && (1000..=9999).contains(&year)
     {
-        let first = NaiveDate::from_ymd_opt(year, 1, 1).unwrap();
-        let last = NaiveDate::from_ymd_opt(year, 12, 31).unwrap();
+        let first = Date::new(year, 1, 1).unwrap();
+        let last = Date::new(year, 12, 31).unwrap();
         return Ok(day_range(first, last));
     }
 
@@ -250,8 +232,8 @@ pub fn parse_period(s: &str) -> Result<Period, String> {
 mod tests {
     use super::*;
 
-    fn dt(s: &str) -> NaiveDateTime {
-        NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap()
+    fn dt(s: &str) -> Timestamp {
+        time::from_local(s.parse().unwrap()).unwrap()
     }
 
     #[test]

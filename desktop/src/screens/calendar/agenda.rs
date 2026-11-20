@@ -1,7 +1,7 @@
 //! The agenda layout of the calendar: one row per day.
 
-use chrono::{Datelike, Duration, Local, NaiveDate};
 use corundum_framework_gui::datetime::{self, Period};
+use jiff::civil::Date;
 use sapphire_framework::gui::egui;
 
 use super::chip::{chip, chip_label, open_day};
@@ -20,39 +20,39 @@ const CHIP_MAX_WIDTH: f32 = 240.0;
 
 /// The days the agenda lists: `len` days from `first`.
 pub struct AgendaRange {
-    pub first: NaiveDate,
+    pub first: Date,
     pub len: usize,
 }
 
 /// The rows of `period`, or today ± 36500 days when it is `None`.
-pub fn agenda_range(period: Option<&Period>, today: NaiveDate) -> AgendaRange {
+pub fn agenda_range(period: Option<&Period>, today: Date) -> AgendaRange {
     let (first, last) = match period {
         Some(p) => (p.first_day(), p.last_day()),
         None => (
-            today - Duration::days(ALL_DAYS),
-            today + Duration::days(ALL_DAYS),
+            today - jiff::Span::new().days(ALL_DAYS),
+            today + jiff::Span::new().days(ALL_DAYS),
         ),
     };
     AgendaRange {
         first,
-        len: ((last - first).num_days().max(0) + 1) as usize,
+        len: ((last - first).get_days().max(0) + 1) as usize,
     }
 }
 
 impl AgendaRange {
-    pub fn date_at(&self, row: usize) -> NaiveDate {
-        self.first + Duration::days(row as i64)
+    pub fn date_at(&self, row: usize) -> Date {
+        self.first + jiff::Span::new().days(row as i64)
     }
 
-    pub fn row_of(&self, day: NaiveDate) -> Option<usize> {
-        let row = (day - self.first).num_days();
-        (0..self.len as i64).contains(&row).then_some(row as usize)
+    pub fn row_of(&self, day: Date) -> Option<usize> {
+        let row = (day - self.first).get_days();
+        (0..self.len as i32).contains(&row).then_some(row as usize)
     }
 }
 
 /// Draw the agenda of `period`: a year, a range, or all entries.
 pub fn show(home: &mut HomeState, period: Option<Period>, ui: &mut egui::Ui) {
-    let today = Local::now().date_naive();
+    let today = sapphire_journal_api::time::local_date(jiff::Timestamp::now());
     let range = agenda_range(period.as_ref(), today);
     let labels = datetime::labels(ui.ctx());
 
@@ -96,11 +96,11 @@ pub fn show(home: &mut HomeState, period: Option<Period>, ui: &mut egui::Ui) {
 }
 
 /// `MM-DD (曜)`, with `YYYY-` in front when `with_year`.
-fn day_label(day: NaiveDate, weekday: &str, with_year: bool) -> String {
+fn day_label(day: Date, weekday: &str, with_year: bool) -> String {
     let date = if with_year {
-        day.format("%Y-%m-%d")
+        day.strftime("%Y-%m-%d")
     } else {
-        day.format("%m-%d")
+        day.strftime("%m-%d")
     };
     format!("{date} ({weekday})")
 }
@@ -109,9 +109,9 @@ fn draw_row(
     home: &mut HomeState,
     ui: &mut egui::Ui,
     labels: &datetime::Labels,
-    day: NaiveDate,
+    day: Date,
     with_year: bool,
-    today: NaiveDate,
+    today: Date,
     items: &[CalendarItem],
 ) {
     let (rect, _) = ui.allocate_exact_size(
@@ -121,7 +121,7 @@ fn draw_row(
     let visuals = ui.visuals();
     let fill = if day == today {
         Some(visuals.selection.bg_fill.gamma_multiply(0.3))
-    } else if day.weekday().number_from_monday() >= 6 {
+    } else if day.weekday().to_monday_one_offset() >= 6 {
         Some(visuals.faint_bg_color)
     } else {
         None
@@ -138,7 +138,7 @@ fn draw_row(
     row.set_clip_rect(rect.intersect(ui.clip_rect()));
     row.spacing_mut().item_spacing.x = 4.0;
 
-    let weekday = &labels.weekdays_short[day.weekday().num_days_from_monday() as usize];
+    let weekday = &labels.weekdays_short[day.weekday().to_monday_zero_offset() as usize];
     let mut text = egui::RichText::new(day_label(day, weekday, with_year));
     if day == today {
         text = text.strong().color(row.visuals().strong_text_color());
@@ -208,8 +208,8 @@ fn chip_width(ui: &egui::Ui, item: &CalendarItem, label: &str) -> f32 {
 mod tests {
     use super::*;
 
-    fn d(y: i32, m: u32, d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    fn d(y: i16, m: i8, d: i8) -> Date {
+        Date::new(y, m, d).unwrap()
     }
 
     #[test]

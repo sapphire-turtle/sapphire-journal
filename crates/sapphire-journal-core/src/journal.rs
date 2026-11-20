@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use chrono::Datelike as _;
 use grain_id::GrainId;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -355,7 +354,7 @@ pub fn entry_filename(id: GrainId, title: &str) -> String {
 /// Returns `(relative_path, id)` so the caller can embed the ID in frontmatter.
 pub fn new_entry_path(title: &str) -> (PathBuf, GrainId) {
     let id = GrainId::now_unix();
-    let year = chrono::Local::now().year();
+    let year = sapphire_journal_api::time::local(jiff::Timestamp::now()).year();
     let path = PathBuf::from(year.to_string()).join(entry_filename(id, title));
     (path, id)
 }

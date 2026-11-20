@@ -1,7 +1,7 @@
 //! The chip an item is drawn as, shared by the calendar layouts.
 
-use chrono::NaiveDate;
 use corundum_framework_gui::datetime::Period;
+use jiff::civil::Date;
 use sapphire_framework::gui::egui;
 
 use super::items::{CalendarItem, ItemKind};
@@ -46,7 +46,7 @@ pub fn chip_label(item: &CalendarItem) -> String {
     if item.all_day {
         item.title.clone()
     } else {
-        format!("{} {}", item.span().0.format("%H:%M"), item.title)
+        format!("{} {}", item.span().0.strftime("%H:%M"), item.title)
     }
 }
 
@@ -60,20 +60,24 @@ fn hover_text(item: &CalendarItem) -> String {
             format!("{first} – {last}")
         }
     } else if matches!(item.kind, ItemKind::Due(_)) {
-        start.format("%Y-%m-%d %H:%M").to_string()
+        start.strftime("%Y-%m-%d %H:%M").to_string()
     } else if start.date() == end.date() {
-        format!("{}–{}", start.format("%Y-%m-%d %H:%M"), end.format("%H:%M"))
+        format!(
+            "{}–{}",
+            start.strftime("%Y-%m-%d %H:%M"),
+            end.strftime("%H:%M")
+        )
     } else {
         format!(
             "{}–{}",
-            start.format("%Y-%m-%d %H:%M"),
-            end.format("%Y-%m-%d %H:%M")
+            start.strftime("%Y-%m-%d %H:%M"),
+            end.strftime("%Y-%m-%d %H:%M")
         )
     };
     format!("{}\n{when}", item.title)
 }
 
 /// Show `day` alone.
-pub fn open_day(home: &mut HomeState, day: NaiveDate) {
+pub fn open_day(home: &mut HomeState, day: Date) {
     home.period = Some(Period::Day(day));
 }

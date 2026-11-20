@@ -273,8 +273,10 @@ fn flag_label(flag: EntryFlag) -> &'static str {
     }
 }
 
-fn format_dt(dt: chrono::NaiveDateTime) -> String {
-    dt.format("%Y-%m-%d %H:%M").to_string()
+fn format_dt(t: jiff::Timestamp) -> String {
+    sapphire_journal_api::time::local(t)
+        .strftime("%Y-%m-%d %H:%M")
+        .to_string()
 }
 
 // ── Form ─────────────────────────────────────────────────────────────────────
@@ -326,7 +328,9 @@ fn draw_form(home: &mut HomeState, ui: &mut egui::Ui) {
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut has_due, "Due").changed() {
                                     editor.task_due = has_due.then(|| {
-                                        DateOrTime::Date(chrono::Local::now().date_naive())
+                                        DateOrTime::Date(sapphire_journal_api::time::local_date(
+                                            jiff::Timestamp::now(),
+                                        ))
                                     });
                                 }
                                 if let Some(due) = editor.task_due.as_mut() {
@@ -396,7 +400,9 @@ pub const TASK_STATUS_OPTIONS: &[&str] = &["open", "in_progress", "done", "cance
 /// The editor's form for an entry the server returned.
 pub fn editor_for(entry: Entry) -> EditorState {
     let fm = &entry.frontmatter;
-    let today = DateOrTime::Date(chrono::Local::now().date_naive());
+    let today = DateOrTime::Date(sapphire_journal_api::time::local_date(
+        jiff::Timestamp::now(),
+    ));
     EditorState {
         id: fm.id.to_string(),
         title: fm.title.clone(),
@@ -489,14 +495,12 @@ fn entry_from_editor(editor: &EditorState) -> Entry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
     use sapphire_journal_core::entry::Frontmatter;
 
     fn entry() -> Entry {
-        let now = NaiveDate::from_ymd_opt(2026, 11, 8)
-            .unwrap()
-            .and_hms_opt(12, 0, 0)
-            .unwrap();
+        let now =
+            sapphire_journal_api::time::from_local(jiff::civil::date(2026, 11, 8).at(12, 0, 0, 0))
+                .unwrap();
         Entry {
             path: "e.md".into(),
             frontmatter: Frontmatter {
@@ -525,7 +529,7 @@ mod tests {
 
     #[test]
     fn date_only_due_is_written_without_a_time() {
-        let day = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+        let day = jiff::civil::date(2026, 11, 8);
         let source = due_source(DateOrTime::Date(day));
         assert!(
             source.contains("due: 2026-11-08\n")
@@ -538,11 +542,10 @@ mod tests {
 
     #[test]
     fn timed_due_is_written_with_its_time() {
-        let dt = NaiveDate::from_ymd_opt(2026, 11, 8)
-            .unwrap()
-            .and_hms_opt(9, 0, 0)
-            .unwrap();
-        let source = due_source(DateOrTime::DateTime(dt));
+        let dt =
+            sapphire_journal_api::time::from_local(jiff::civil::date(2026, 11, 8).at(9, 0, 0, 0))
+                .unwrap();
+        let source = due_source(DateOrTime::Time(dt));
         assert!(source.contains("2026-11-08T09:00"), "{source}");
     }
 }

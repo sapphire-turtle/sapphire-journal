@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Times show and are picked in this host's time zone; entries are written with its offset (see sapphire-journal-api).
+- sapphire-framework 0.29, corundum-framework 0.13.
+
 ## [0.17.0](https://github.com/sapphire-turtle/sapphire-journal/compare/v0.16.0...v0.17.0) - 2026-11-09
 
 ### Added

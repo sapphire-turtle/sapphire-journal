@@ -40,19 +40,19 @@ pub fn show(home: &mut HomeState, ui: &mut egui::Ui) {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{NaiveDate, Weekday};
+    use jiff::civil::{Date, Weekday};
 
     use super::*;
 
-    fn d(day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 11, day).unwrap()
+    fn d(day: i8) -> Date {
+        jiff::civil::date(2026, 11, day)
     }
 
     #[test]
     fn layout_follows_the_period() {
         assert_eq!(layout_for(Some(&Period::Day(d(8)))), Layout::Timeline);
         assert_eq!(
-            layout_for(Some(&Period::week_of(d(8), Weekday::Mon))),
+            layout_for(Some(&Period::week_of(d(8), Weekday::Monday))),
             Layout::Timeline
         );
         assert_eq!(layout_for(Some(&Period::month_of(d(8)))), Layout::Month);

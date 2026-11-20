@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
 use corundum_framework_gui::datetime::{self, PeriodPickerButton};
 use grain_id::GrainId;
+use jiff::civil::Date;
 use sapphire_framework::gui::egui;
 
 use sapphire_journal_core::{
@@ -188,10 +188,12 @@ fn draw_toolbar(app: &mut App, ui: &mut egui::Ui) {
 /// How many entries fall on `date`, for the period picker's dots. Mirrors
 /// the filter applied in `filter_and_sort`, so the dots match what the view
 /// shows after a click.
-fn count_on(entries: &[EntryHeader], date: NaiveDate) -> usize {
+fn count_on(entries: &[EntryHeader], date: Date) -> usize {
+    let here =
+        |d| sapphire_journal_api::time::from_local(d).unwrap_or_else(|_| jiff::Timestamp::now());
     let filter = period_filter(Period::Range(
-        date.and_hms_opt(0, 0, 0).unwrap(),
-        date.and_hms_opt(23, 59, 59).unwrap(),
+        here(date.at(0, 0, 0, 0)),
+        here(date.at(23, 59, 59, 0)),
     ));
     entries.iter().filter(|e| filter.matches(e).0).count()
 }

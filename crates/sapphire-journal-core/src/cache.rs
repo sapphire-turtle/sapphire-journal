@@ -37,6 +37,8 @@ use std::{
 };
 
 use grain_id::GrainId;
+
+use crate::sql_id::{self, SqlId};
 use rusqlite::{Connection, OptionalExtension as _, params};
 use sapphire_track::{FileStamp, file_stamp};
 
@@ -49,7 +51,7 @@ use crate::{
 // ── schema version ────────────────────────────────────────────────────────────
 
 /// Stored in `PRAGMA user_version`.  Increment whenever the schema changes.
-pub const SCHEMA_VERSION: i32 = 7;
+pub const SCHEMA_VERSION: i32 = 8;
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
@@ -312,7 +314,7 @@ pub fn find_entry_by_id(conn: &Connection, id: GrainId) -> Result<crate::entry::
     match fetch_full_entry(conn, id) {
         Ok(entry) => {
             if !entry.path.exists() {
-                conn.execute("DELETE FROM entries WHERE id = ?1", [id])?;
+                conn.execute("DELETE FROM entries WHERE id = ?1", [SqlId(id)])?;
                 return Err(Error::EntryNotFound(id.to_string()));
             }
             Ok(entry)
@@ -329,7 +331,7 @@ pub fn find_entry_by_title(conn: &Connection, title: &str) -> Result<crate::entr
     let mut stmt = conn.prepare("SELECT id, path FROM entries WHERE title = ?1")?;
     let rows: Vec<(GrainId, String)> = stmt
         .query_map([title], |row| {
-            Ok((row.get::<_, GrainId>(0)?, row.get::<_, String>(1)?))
+            Ok((row.get::<_, SqlId>(0)?.0, row.get::<_, String>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -351,14 +353,14 @@ pub fn find_entry_by_title(conn: &Connection, title: &str) -> Result<crate::entr
 /// Read all entries from the cache as [`EntryHeader`] structs (no body).
 pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::EntryHeader>> {
     use crate::entry::{EntryHeader, EventMetaView, FrontmatterView, TaskMetaView};
-    use chrono::NaiveDateTime;
+    use jiff::Timestamp;
 
     let mut tag_map: HashMap<GrainId, Vec<String>> = HashMap::new();
     {
         let mut stmt = conn.prepare("SELECT entry_id, tag FROM tags ORDER BY entry_id, tag")?;
         let rows = stmt
             .query_map([], |row| {
-                Ok((row.get::<_, GrainId>(0)?, row.get::<_, String>(1)?))
+                Ok((row.get::<_, SqlId>(0)?.0, row.get::<_, String>(1)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         for (id, tag) in rows {
@@ -366,10 +368,10 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
         }
     }
 
-    let parse_dt = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default();
-    let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
+    let parse_dt = |s: &str| sapphire_journal_api::time::parse(s).unwrap_or_default();
+    let parse_dt_opt = |s: Option<String>| -> Option<Timestamp> {
         s.as_deref()
-            .and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+            .and_then(|s| sapphire_journal_api::time::parse(s).ok())
     };
 
     let mut stmt = conn.prepare(
@@ -382,8 +384,8 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
     let rows = stmt
         .query_map([], |row| {
             Ok((
-                row.get::<_, GrainId>(0)?,
-                row.get::<_, Option<GrainId>>(1)?,
+                row.get::<_, SqlId>(0)?.0,
+                row.get::<_, Option<SqlId>>(1)?.map(|id| id.0),
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
@@ -456,7 +458,7 @@ pub fn list_entries_from_cache(conn: &Connection) -> Result<Vec<crate::entry::En
             frontmatter.hidden == Some(true),
             frontmatter.created_at,
             frontmatter.updated_at,
-            chrono::Duration::days(crate::labels::STALE_AFTER_DAYS_DEFAULT as i64),
+            jiff::SignedDuration::from_hours(24 * (crate::labels::STALE_AFTER_DAYS_DEFAULT as i64)),
         );
         result.push(EntryHeader {
             path,
@@ -494,8 +496,8 @@ pub fn upsert_entry_from_path(conn: &Connection, path: &Path) -> Result<()> {
 
 fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entry> {
     use crate::entry::{Entry, EventMeta, Frontmatter, TaskMeta};
-    use chrono::NaiveDateTime;
     use indexmap::IndexMap;
+    use jiff::Timestamp;
 
     let (
         parent_id,
@@ -516,10 +518,10 @@ fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entr
                 task_status, task_due, task_started_at, task_closed_at,
                 event_start, event_end, hidden
          FROM entries WHERE id = ?1",
-        [id],
+        [SqlId(id)],
         |row| {
             Ok((
-                row.get::<_, Option<GrainId>>(0)?,
+                row.get::<_, Option<SqlId>>(0)?.map(|id| id.0),
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
@@ -538,13 +540,13 @@ fn fetch_full_entry(conn: &Connection, id: GrainId) -> Result<crate::entry::Entr
 
     let mut tags_stmt = conn.prepare("SELECT tag FROM tags WHERE entry_id = ?1 ORDER BY tag")?;
     let tags: Vec<String> = tags_stmt
-        .query_map([id], |row| row.get(0))?
+        .query_map([SqlId(id)], |row| row.get(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let parse_dt = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").unwrap_or_default();
-    let parse_dt_opt = |s: Option<String>| -> Option<NaiveDateTime> {
+    let parse_dt = |s: &str| sapphire_journal_api::time::parse(s).unwrap_or_default();
+    let parse_dt_opt = |s: Option<String>| -> Option<Timestamp> {
         s.as_deref()
-            .and_then(|s| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+            .and_then(|s| sapphire_journal_api::time::parse(s).ok())
     };
 
     let task = task_status.map(|status| TaskMeta {
@@ -606,7 +608,7 @@ fn increment_until_free(
         let conflict: Option<String> = conn
             .query_row(
                 "SELECT path FROM entries WHERE id = ?1 AND path != ?2",
-                params![entry.frontmatter.id, path_str.as_ref()],
+                params![SqlId(entry.frontmatter.id), path_str.as_ref()],
                 |row| row.get(0),
             )
             .optional()?;
@@ -663,34 +665,34 @@ fn upsert_entry(conn: &Connection, entry: &crate::entry::Entry) -> Result<()> {
             event_start, event_end, hidden
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
-            fm.id,
-            fm.parent_id,
+            SqlId(fm.id),
+            sql_id::opt(fm.parent_id),
             path_str.as_ref(),
             fm.title,
             fm.slug,
-            fm.created_at.format("%Y-%m-%dT%H:%M").to_string(),
-            fm.updated_at.format("%Y-%m-%dT%H:%M").to_string(),
+            sapphire_journal_api::time::format(fm.created_at),
+            sapphire_journal_api::time::format(fm.updated_at),
             fm.task.as_ref().map(|t| t.status.clone()),
             fm.task.as_ref().and_then(|t| t.due).map(|d| d.to_string()),
             fm.task
                 .as_ref()
                 .and_then(|t| t.started_at)
-                .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
+                .map(sapphire_journal_api::time::format),
             fm.task
                 .as_ref()
                 .and_then(|t| t.closed_at)
-                .map(|d| d.format("%Y-%m-%dT%H:%M").to_string()),
+                .map(sapphire_journal_api::time::format),
             fm.event.as_ref().map(|e| e.start.to_string()),
             fm.event.as_ref().map(|e| e.end.to_string()),
             fm.hidden.map(i64::from),
         ],
     )?;
 
-    conn.execute("DELETE FROM tags WHERE entry_id = ?1", [fm.id])?;
+    conn.execute("DELETE FROM tags WHERE entry_id = ?1", [SqlId(fm.id)])?;
     for tag in &fm.tags {
         conn.execute(
             "INSERT OR IGNORE INTO tags (entry_id, tag) VALUES (?1, ?2)",
-            params![fm.id, tag],
+            params![SqlId(fm.id), tag],
         )?;
     }
 
@@ -754,7 +756,7 @@ mod tests {
     }
 
     fn frontmatter(id: GrainId, title: &str) -> Frontmatter {
-        let now = chrono::Local::now().naive_local();
+        let now = jiff::Timestamp::now();
         Frontmatter {
             id,
             parent_id: None,
@@ -777,11 +779,9 @@ mod tests {
         let conn = conn_with_schema();
         let id = GrainId::now_unix();
         let mut fm = frontmatter(id, "rt");
-        let d = DateOrTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap());
-        let dt = DateOrTime::DateTime(
-            chrono::NaiveDate::from_ymd_opt(2026, 11, 9)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
+        let d = DateOrTime::Date(jiff::civil::date(2026, 11, 8));
+        let dt = DateOrTime::Time(
+            sapphire_journal_api::time::from_local(jiff::civil::date(2026, 11, 9).at(0, 0, 0, 0))
                 .unwrap(),
         );
         fm.task = Some(crate::entry::TaskMeta {

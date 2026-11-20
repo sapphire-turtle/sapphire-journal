@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use jiff::Timestamp;
 use sapphire_journal_api::DateOrTime;
 
 use crate::{
@@ -18,7 +18,7 @@ pub fn parse_tags_csv(tags: Option<&str>) -> Option<Vec<String>> {
     })
 }
 
-pub fn parse_optional_datetime(s: Option<&str>) -> Result<Option<NaiveDateTime>> {
+pub fn parse_optional_datetime(s: Option<&str>) -> Result<Option<Timestamp>> {
     s.map(|s| parse_datetime(s).map_err(Error::InvalidInput))
         .transpose()
 }

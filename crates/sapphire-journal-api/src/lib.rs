@@ -19,6 +19,8 @@
 pub use grain_id::GrainId;
 pub use sapphire_server_api as server;
 
+pub mod time;
+
 mod date_or_time;
 pub use date_or_time::DateOrTime;
 

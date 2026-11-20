@@ -384,11 +384,11 @@ impl JournalMethods {
             let mut out = format!("# {}\n", entry.title());
             out.push_str(&format!(
                 "created:  {}\n",
-                fm.created_at.format("%Y-%m-%dT%H:%M")
+                sapphire_journal_api::time::format(fm.created_at)
             ));
             out.push_str(&format!(
                 "updated:  {}\n",
-                fm.updated_at.format("%Y-%m-%dT%H:%M")
+                sapphire_journal_api::time::format(fm.updated_at)
             ));
             if !fm.tags.is_empty() {
                 out.push_str(&format!("tags:     {}\n", fm.tags.join(", ")));
@@ -400,7 +400,10 @@ impl JournalMethods {
                     None => out.push_str(&format!("task:     {status}\n")),
                 }
                 if let Some(ca) = task.closed_at {
-                    out.push_str(&format!("closed:   {}\n", ca.format("%Y-%m-%dT%H:%M")));
+                    out.push_str(&format!(
+                        "closed:   {}\n",
+                        sapphire_journal_api::time::format(ca)
+                    ));
                 }
             }
             if let Some(event) = &fm.event {

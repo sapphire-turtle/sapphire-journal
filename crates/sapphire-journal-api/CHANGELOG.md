@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Times are `jiff::Timestamp` and dates `jiff::civil::Date`, not chrono's naive types: chrono is unmaintained (RUSTSEC-2026-0543). `created_at`, `updated_at`, `started_at` and `closed_at` are `Timestamp`s; `DateOrTime` is `Date(Date)` (all day) or `Time(Timestamp)`, which was `DateTime(NaiveDateTime)`. `start_bound` and `end_bound` are `Timestamp`s, an all-day date's in this host's time zone. `time` has the helpers (`now`, `local`, `local_date`, `from_local`, `parse`, `format`).
+- A time is written to the minute with this host's offset (`2026-11-08T10:00+09:00`). A time without one — every entry written before — is read in this host's time zone, and gains the offset when the entry is next written. **Journal releases before this one cannot read an entry this one has written: update every device at once.**
+- `sapphire-framework-server-api` 7 (re-exported as `server`), with sapphire-framework 0.29: the IPC handshake's API version 7.
+- grain-id 0.17 (`GrainId` is re-used in the API types).
+
 ## [5.0.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-api-v4.0.0...sapphire-journal-api-v5.0.0) - 2026-11-09
 
 ### Added
