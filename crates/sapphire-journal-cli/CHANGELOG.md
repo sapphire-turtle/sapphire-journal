@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-cli-v0.18.0...sapphire-journal-cli-v0.18.1) - 2026-11-21
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.18.0](https://github.com/sapphire-turtle/sapphire-journal/compare/sapphire-journal-cli-v0.17.0...sapphire-journal-cli-v0.18.0) - 2026-11-20
 
 ### Changed
